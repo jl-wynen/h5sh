@@ -1,0 +1,8 @@
+# Rust
+/target
+
+# Data files
+*.hdf
+*.hdf5
+*.h5
+*.nxs
