@@ -1,4 +1,5 @@
 mod h5;
+mod line_editor;
 
 use std::path::PathBuf;
 

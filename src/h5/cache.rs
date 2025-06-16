@@ -1,25 +1,28 @@
-use super::path::H5Path;
 use indexmap::IndexMap;
+use smallvec::SmallVec;
+
+use super::path::H5Path;
 
 // Generic struct to simplify testing.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct FileCache<Entry> {
+pub struct FileCache<Entry> {
     objects: IndexMap<H5Path, Entry>,
 }
 
-pub(crate) type H5FileCache = FileCache<CacheEntry>;
+pub type H5FileCache = FileCache<CacheEntry>;
 
 impl<Entry> FileCache<Entry> {
-    fn get<Key: CacheKey<Entry>>(&self, key: Key) -> Option<&Entry> {
+    pub fn get<Key: CacheKey<Entry>>(&self, key: Key) -> Option<&Entry> {
         key.get_cache_entry(&self.objects)
     }
 
-    fn insert(&mut self, path: H5Path, data: Entry) -> EntryId {
+    pub fn insert(&mut self, path: H5Path, data: Entry) -> EntryId {
         self.objects.insert_full(path, data).0.into()
     }
 }
 
-pub(crate) struct EntryId(usize);
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct EntryId(usize);
 
 impl From<usize> for EntryId {
     fn from(index: usize) -> Self {
@@ -27,7 +30,7 @@ impl From<usize> for EntryId {
     }
 }
 
-pub(crate) trait CacheKey<Entry> {
+pub trait CacheKey<Entry> {
     fn get_cache_entry<'m>(&self, objects: &'m IndexMap<H5Path, Entry>) -> Option<&'m Entry>;
 }
 
@@ -50,17 +53,29 @@ impl<Entry> CacheKey<Entry> for EntryId {
 }
 
 #[derive(Debug)]
-pub(crate) struct CacheEntry {
+pub struct CacheEntry {
     location_info: hdf5::LocationInfo,
+    children: Option<SmallVec<EntryId, 4>>,
 }
 
 impl CacheEntry {
-    pub(crate) fn from_location_info(location_info: hdf5::LocationInfo) -> Self {
-        Self { location_info }
+    pub fn from_location_info(location_info: hdf5::LocationInfo) -> Self {
+        Self {
+            location_info,
+            children: None,
+        }
     }
 
-    pub(crate) fn location_token(&self) -> &hdf5::LocationToken {
+    pub fn location_token(&self) -> &hdf5::LocationToken {
         &self.location_info.token
+    }
+
+    pub fn children(&self) -> Option<&[EntryId]> {
+        self.children.as_ref().map(|ids| ids.as_slice())
+    }
+
+    pub fn set_children<C: Into<SmallVec<EntryId, 4>>>(&mut self, children: C) {
+        self.children = Some(children.into());
     }
 }
 
