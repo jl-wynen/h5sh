@@ -34,6 +34,10 @@ impl H5Path {
             .map_or_else(|| self.raw.as_str(), |(_, name)| name)
     }
 
+    pub fn segments(&self) -> impl Iterator<Item = &str> {
+        self.raw.split('/')
+    }
+
     pub fn as_raw(&self) -> &str {
         &self.raw
     }
