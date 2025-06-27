@@ -2,7 +2,7 @@
 name = "h5sh"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.88"
 
 homepage = "https://github.com/jl-wynen/h5sh"
 repository = "https://github.com/jl-wynen/h5sh"
