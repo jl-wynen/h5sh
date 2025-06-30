@@ -50,30 +50,25 @@ impl<Value> FileCache<Value> {
         self.objects.insert_full(path, Entry::from(data)).0.into()
     }
 
-    pub fn insert_child<Key: CacheKey<Entry<Value>>>(
+    #[must_use = "This method does not modify the cache and returns false if the parent does not exist"]
+    pub fn insert_children<
+        Key: CacheKey<Entry<Value>>,
+        Values: IntoIterator<Item = (H5Path, Value)>,
+    >(
         &mut self,
         parent: Key,
-        path: H5Path,
-        data: Value,
-    ) -> Option<EntryId> {
-        // This implementation ensures that the child is only inserted if the parent
-        // exists. It uses unsafe code with pointers to bypass the borrow checker which
-        // would otherwise not allow getting the parent first and then inserting the
-        // child. Alternatively, we could check whether the parent exists first,
-        // insert the child, and then get_mut the parent. But that would require
-        // extra hash operations.
-        self.objects.reserve(1);
-        let parent = self.get_mut(parent)? as *mut Entry<Value>;
-        let child_id = self.insert(path, data);
-        // Safety: The call to reserve above ensures that there is enough space in the
-        // map for the child, so the parent is not moved and the pointer stays valid.
-        unsafe {
-            (*parent)
-                .children
-                .get_or_insert_with(SmallVec::new)
-                .push(child_id);
+        children: Values,
+    ) -> bool {
+        if !parent.is_in_cache(&self.objects) {
+            return false;
         }
-        Some(child_id)
+        let child_ids = children
+            .into_iter()
+            .map(|(path, data)| self.insert(path, data))
+            .collect::<SmallVec<_, 4>>();
+        let parent = self.get_mut(parent).unwrap();
+        parent.insert_children(child_ids);
+        true
     }
 }
 
@@ -92,6 +87,12 @@ impl<Value> Entry<Value> {
 
     pub fn set_children<C: Into<SmallVec<EntryId, 4>>>(&mut self, children: C) {
         self.children = Some(children.into());
+    }
+
+    pub fn insert_children<C: IntoIterator<Item = EntryId>>(&mut self, children: C) {
+        self.children
+            .get_or_insert_with(SmallVec::new)
+            .extend(children);
     }
 }
 
@@ -116,6 +117,7 @@ pub trait CacheKey<Entry> {
         &self,
         objects: &'m mut IndexMap<H5Path, Entry>,
     ) -> Option<&'m mut Entry>;
+    fn is_in_cache(&self, objects: &IndexMap<H5Path, Entry>) -> bool;
 }
 
 impl<Entry> CacheKey<Entry> for H5Path {
@@ -128,6 +130,10 @@ impl<Entry> CacheKey<Entry> for H5Path {
         objects: &'m mut IndexMap<H5Path, Entry>,
     ) -> Option<&'m mut Entry> {
         objects.get_mut(self)
+    }
+
+    fn is_in_cache(&self, objects: &IndexMap<H5Path, Entry>) -> bool {
+        objects.contains_key(self)
     }
 }
 
@@ -142,6 +148,10 @@ impl<Entry> CacheKey<Entry> for &H5Path {
     ) -> Option<&'m mut Entry> {
         objects.get_mut(*self)
     }
+
+    fn is_in_cache(&self, objects: &IndexMap<H5Path, Entry>) -> bool {
+        objects.contains_key(*self)
+    }
 }
 
 impl<Entry> CacheKey<Entry> for EntryId {
@@ -154,6 +164,10 @@ impl<Entry> CacheKey<Entry> for EntryId {
         objects: &'m mut IndexMap<H5Path, Entry>,
     ) -> Option<&'m mut Entry> {
         objects.get_index_mut(self.0).map(|(_, entry)| entry)
+    }
+
+    fn is_in_cache(&self, objects: &IndexMap<H5Path, Entry>) -> bool {
+        objects.len() > self.0
     }
 }
 
@@ -231,16 +245,20 @@ mod tests {
         let root = H5Path::from("/root".to_string());
         let a = H5Path::from("/root/a".to_string());
         let b = H5Path::from("/root/b".to_string());
+        let c = H5Path::from("/root/b/c".to_string());
         let cache = {
             let mut cache = FileCache::<i32>::default();
             let root_id = cache.insert(root.clone(), 4);
-            cache.insert_child(root_id, a.clone(), 6);
-            cache.insert_child(root.clone(), b.clone(), 9);
+            cache.insert_children(root_id, [(a.clone(), 6), (b.clone(), 9)]);
+            cache.insert_children(b.clone(), std::iter::once((c.clone(), 11)));
             cache
         };
         let a_id = cache.get_with_id(&a).unwrap().0;
         let b_id = cache.get_with_id(&b).unwrap().0;
+        let c_id = cache.get_with_id(&c).unwrap().0;
         let root_entry = cache.get(root).unwrap();
         assert_eq!(root_entry.children, Some(smallvec![a_id, b_id]));
+        let b_entry = cache.get(b).unwrap();
+        assert_eq!(b_entry.children, Some(smallvec![c_id]));
     }
 }
