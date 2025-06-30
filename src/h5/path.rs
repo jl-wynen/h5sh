@@ -29,9 +29,8 @@ impl H5Path {
     }
 
     pub fn name(&self) -> &str {
-        self.raw
-            .rsplit_once('/')
-            .map_or_else(|| self.raw.as_str(), |(_, name)| name)
+        let raw = self.raw.trim_end_matches('/');
+        raw.rsplit_once('/').map_or(raw, |(_, name)| name)
     }
 
     pub fn parent(&self) -> Self {
@@ -51,6 +50,12 @@ impl H5Path {
         self.raw.split('/')
     }
 
+    pub fn normalized(&self) -> Self {
+        Self {
+            raw: self.raw.trim_end_matches('/').to_string(),
+        }
+    }
+
     pub fn as_raw(&self) -> &str {
         &self.raw
     }
@@ -58,15 +63,14 @@ impl H5Path {
 
 impl From<String> for H5Path {
     fn from(value: String) -> Self {
-        if let Some(mut stripped) = value.strip_suffix('/') {
-            while let Some(s) = stripped.strip_suffix('/') {
-                stripped = s;
-            }
-            Self {
-                raw: stripped.into(),
-            }
-        } else {
-            Self { raw: value }
+        Self { raw: value }
+    }
+}
+
+impl From<&str> for H5Path {
+    fn from(value: &str) -> Self {
+        Self {
+            raw: value.to_string(),
         }
     }
 }
@@ -84,22 +88,22 @@ mod tests {
 
     #[test]
     fn from_empty_string() {
-        let path = H5Path::from("".to_string());
+        let path = H5Path::from("");
         let expected = "".to_string();
         assert_eq!(path.to_string(), expected);
     }
 
     #[test]
     fn from_some_string() {
-        let path = H5Path::from("/base/group/ds".to_string());
+        let path = H5Path::from("/base/group/ds");
         let expected = "/base/group/ds".to_string();
         assert_eq!(path.to_string(), expected);
     }
 
     #[test]
-    fn from_some_string_strips_slash_suffix() {
-        let path = H5Path::from("/base//ds//".to_string());
-        let expected = "/base//ds".to_string();
+    fn from_some_string_preserves_slashes() {
+        let path = H5Path::from("/base//ds//");
+        let expected = "/base//ds//".to_string();
         assert_eq!(path.to_string(), expected);
     }
 
@@ -111,67 +115,67 @@ mod tests {
 
     #[test]
     fn is_absolute_true() {
-        let path = H5Path::from("/base/group/ds".to_string());
+        let path = H5Path::from("/base/group/ds");
         assert!(path.is_absolute());
     }
 
     #[test]
     fn is_absolute_empty() {
-        let path = H5Path::from("".to_string());
+        let path = H5Path::from("");
         assert!(!path.is_absolute());
     }
 
     #[test]
     fn is_absolute_false() {
-        let path = H5Path::from("group/ds".to_string());
+        let path = H5Path::from("group/ds");
         assert!(!path.is_absolute());
     }
 
     #[test]
     fn join_absolute_relative() {
-        let a = H5Path::from("/a/b".to_string());
-        let b = H5Path::from("c/d".to_string());
-        let expected = H5Path::from("/a/b/c/d".to_string());
+        let a = H5Path::from("/a/b");
+        let b = H5Path::from("c/d");
+        let expected = H5Path::from("/a/b/c/d");
         assert_eq!(a.join(&b), expected);
     }
 
     #[test]
     fn join_absolute_absolute() {
-        let a = H5Path::from("/a/b".to_string());
-        let b = H5Path::from("/c/d".to_string());
-        let expected = H5Path::from("/c/d".to_string());
+        let a = H5Path::from("/a/b");
+        let b = H5Path::from("/c/d");
+        let expected = H5Path::from("/c/d");
         assert_eq!(a.join(&b), expected);
     }
 
     #[test]
     fn join_relative_absolute() {
-        let a = H5Path::from("a/b".to_string());
-        let b = H5Path::from("/c/d".to_string());
-        let expected = H5Path::from("/c/d".to_string());
+        let a = H5Path::from("a/b");
+        let b = H5Path::from("/c/d");
+        let expected = H5Path::from("/c/d");
         assert_eq!(a.join(&b), expected);
     }
 
     #[test]
     fn join_relative_relative() {
-        let a = H5Path::from("a/b".to_string());
-        let b = H5Path::from("c/d".to_string());
-        let expected = H5Path::from("a/b/c/d".to_string());
+        let a = H5Path::from("a/b");
+        let b = H5Path::from("c/d");
+        let expected = H5Path::from("a/b/c/d");
         assert_eq!(a.join(&b), expected);
     }
 
     #[test]
     fn join_root_relative() {
         let a = H5Path::root();
-        let b = H5Path::from("c/d".to_string());
-        let expected = H5Path::from("/c/d".to_string());
+        let b = H5Path::from("c/d");
+        let expected = H5Path::from("/c/d");
         assert_eq!(a.join(&b), expected);
     }
 
     #[test]
     fn join_root_absolute() {
         let a = H5Path::root();
-        let b = H5Path::from("/c/d".to_string());
-        let expected = H5Path::from("/c/d".to_string());
+        let b = H5Path::from("/c/d");
+        let expected = H5Path::from("/c/d");
         assert_eq!(a.join(&b), expected);
     }
 
@@ -183,19 +187,19 @@ mod tests {
 
     #[test]
     fn name_single() {
-        let path = H5Path::from("object".to_string());
+        let path = H5Path::from("object");
         assert_eq!(path.name(), "object");
     }
 
     #[test]
     fn name_two_segments() {
-        let path = H5Path::from("group/ds".to_string());
+        let path = H5Path::from("group/ds");
         assert_eq!(path.name(), "ds");
     }
 
     #[test]
     fn name_trailing_slash() {
-        let path = H5Path::from("group/object/".to_string());
+        let path = H5Path::from("group/object/");
         assert_eq!(path.name(), "object");
     }
 }
