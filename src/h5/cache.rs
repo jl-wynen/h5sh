@@ -7,51 +7,58 @@ use super::path::H5Path;
 // This is a generic struct to simplify testing.
 #[derive(Clone, Debug, Default)]
 pub struct FileCache<Value> {
-    objects: IndexMap<H5Path, Entry<Value>>,
+    objects: IndexMap<H5Path, CacheEntry<Value>>,
 }
 
 pub type H5FileCache = FileCache<CacheValue>;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct EntryId(usize);
+pub struct CacheEntryId(usize);
 
 #[derive(Clone, Debug)]
-pub enum Entry<Value> {
+pub enum CacheEntry<Value> {
     Group {
         value: Value,
-        children: Option<SmallVec<EntryId, 4>>,
+        children: Option<SmallVec<CacheEntryId, 4>>,
     },
     Leaf {
         value: Value,
     },
 }
 
-pub use Entry::{Group, Leaf};
+pub use CacheEntry::{Group, Leaf};
 
 impl<Value> FileCache<Value> {
     pub fn contains_key(&self, key: &H5Path) -> bool {
         self.objects.contains_key(key)
     }
 
-    pub fn get<Key: CacheKey<Entry<Value>>>(&self, key: Key) -> Option<&Entry<Value>> {
+    pub fn get<Key: CacheKey<CacheEntry<Value>>>(&self, key: Key) -> Option<&CacheEntry<Value>> {
         key.get_cache_entry(&self.objects)
     }
 
-    pub fn get_mut<Key: CacheKey<Entry<Value>>>(&mut self, key: Key) -> Option<&mut Entry<Value>> {
+    pub fn get_mut<Key: CacheKey<CacheEntry<Value>>>(
+        &mut self,
+        key: Key,
+    ) -> Option<&mut CacheEntry<Value>> {
         key.get_cache_entry_mut(&mut self.objects)
     }
 
-    pub fn get_with_id(&self, key: &H5Path) -> Option<(EntryId, &Entry<Value>)> {
+    pub fn get_with_id(&self, key: &H5Path) -> Option<(CacheEntryId, &CacheEntry<Value>)> {
         self.objects
             .get_full(key)
             .map(|(index, _, entry)| (index.into(), entry))
     }
 
-    pub fn get_key(&self, id: EntryId) -> Option<&H5Path> {
+    pub fn get_key(&self, id: CacheEntryId) -> Option<&H5Path> {
         self.objects.get_index(id.0).map(|(key, _)| key)
     }
 
-    pub fn insert_group(&mut self, path: &H5Path, value: Value) -> EntryId {
+    pub fn get_with_key(&self, id: CacheEntryId) -> Option<(&H5Path, &CacheEntry<Value>)> {
+        self.objects.get_index(id.0)
+    }
+
+    pub fn insert_group(&mut self, path: &H5Path, value: Value) -> CacheEntryId {
         self.insert_entry(
             path,
             Group {
@@ -61,17 +68,17 @@ impl<Value> FileCache<Value> {
         )
     }
 
-    pub fn insert_leaf(&mut self, path: &H5Path, value: Value) -> EntryId {
+    pub fn insert_leaf(&mut self, path: &H5Path, value: Value) -> CacheEntryId {
         self.insert_entry(path, Leaf { value })
     }
 
-    pub fn insert_entry(&mut self, path: &H5Path, entry: Entry<Value>) -> EntryId {
+    pub fn insert_entry(&mut self, path: &H5Path, entry: CacheEntry<Value>) -> CacheEntryId {
         self.objects.insert_full(path.normalized(), entry).0.into()
     }
 
     pub fn insert_children<Key, Values>(&mut self, parent: Key, children: Values) -> Result<()>
     where
-        Key: CacheKey<Entry<Value>>,
+        Key: CacheKey<CacheEntry<Value>>,
         Values: IntoIterator<Item = (H5Path, Value, bool)>,
     {
         if !parent.is_in_cache(&self.objects) {
@@ -92,7 +99,7 @@ impl<Value> FileCache<Value> {
     }
 }
 
-impl<Value> Entry<Value> {
+impl<Value> CacheEntry<Value> {
     pub fn value(&self) -> &Value {
         match self {
             Group { value, .. } => value,
@@ -107,7 +114,18 @@ impl<Value> Entry<Value> {
         }
     }
 
-    pub fn insert_children<C: IntoIterator<Item = EntryId>>(&mut self, children: C) -> Result<()> {
+    pub fn is_group(&self) -> bool {
+        matches!(self, Group { .. })
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        matches!(self, Leaf { .. })
+    }
+
+    pub fn insert_children<C: IntoIterator<Item = CacheEntryId>>(
+        &mut self,
+        children: C,
+    ) -> Result<()> {
         match self {
             Leaf { .. } => bail!("Cannot insert children into a leaf"),
             Group { children: c, .. } => {
@@ -118,7 +136,7 @@ impl<Value> Entry<Value> {
     }
 }
 
-impl From<usize> for EntryId {
+impl From<usize> for CacheEntryId {
     fn from(index: usize) -> Self {
         Self(index)
     }
@@ -167,7 +185,7 @@ impl<Entry> CacheKey<Entry> for &H5Path {
     }
 }
 
-impl<Entry> CacheKey<Entry> for EntryId {
+impl<Entry> CacheKey<Entry> for CacheEntryId {
     fn get_cache_entry<'m>(&self, objects: &'m IndexMap<H5Path, Entry>) -> Option<&'m Entry> {
         objects.get_index(self.0).map(|(_, entry)| entry)
     }
@@ -205,7 +223,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use smallvec::smallvec;
 
-    fn assert_children(entry: &Entry<i32>, expected: Option<SmallVec<EntryId, 4>>) {
+    fn assert_children(entry: &CacheEntry<i32>, expected: Option<SmallVec<CacheEntryId, 4>>) {
         match entry {
             Group { children, .. } => {
                 assert_eq!(*children, expected);
@@ -216,7 +234,7 @@ mod tests {
         }
     }
 
-    fn assert_leaf(entry: &Entry<i32>) {
+    fn assert_leaf(entry: &CacheEntry<i32>) {
         assert!(matches!(entry, Leaf { .. }));
     }
 
