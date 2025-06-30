@@ -33,17 +33,15 @@ impl H5Path {
         raw.rsplit_once('/').map_or(raw, |(_, name)| name)
     }
 
-    pub fn parent(&self) -> Self {
-        self.raw
-            .rsplit_once('/')
-            .map_or_else(Self::root, |(parent, _)| Self::from(parent.to_string()))
-    }
-
     pub fn split_parent(&self) -> (Self, &str) {
-        self.raw.rsplit_once('/').map_or_else(
-            || (Self::root(), ""),
-            |(parent, name)| (Self::from(parent.to_string()), name),
-        )
+        if self.raw == "/" {
+            (self.clone(), "")
+        } else {
+            self.raw.rsplit_once('/').map_or_else(
+                || (Self::root(), ""),
+                |(parent, name)| (Self::from(parent.to_string()), name),
+            )
+        }
     }
 
     pub fn segments(&self) -> impl Iterator<Item = &str> {
