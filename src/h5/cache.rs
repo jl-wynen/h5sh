@@ -1,12 +1,10 @@
-use indexmap::{
-    IndexMap,
-    map::Entry::{Occupied, Vacant},
-};
+use anyhow::{Result, bail};
+use indexmap::IndexMap;
 use smallvec::SmallVec;
 
 use super::path::H5Path;
 
-// The struct is generic struct to simplify testing.
+// This is a generic struct to simplify testing.
 #[derive(Clone, Debug, Default)]
 pub struct FileCache<Value> {
     objects: IndexMap<H5Path, Entry<Value>>,
@@ -18,10 +16,17 @@ pub type H5FileCache = FileCache<CacheValue>;
 pub struct EntryId(usize);
 
 #[derive(Clone, Debug)]
-pub struct Entry<Value> {
-    value: Value,
-    children: Option<SmallVec<EntryId, 4>>,
+pub enum Entry<Value> {
+    Group {
+        value: Value,
+        children: Option<SmallVec<EntryId, 4>>,
+    },
+    Leaf {
+        value: Value,
+    },
 }
+
+pub use Entry::{Group, Leaf};
 
 impl<Value> FileCache<Value> {
     pub fn contains_key(&self, key: &H5Path) -> bool {
@@ -46,68 +51,76 @@ impl<Value> FileCache<Value> {
         self.objects.get_index(id.0).map(|(key, _)| key)
     }
 
-    pub fn insert(&mut self, path: H5Path, data: Value) -> EntryId {
-        self.objects.insert_full(path, Entry::from(data)).0.into()
+    pub fn insert_group(&mut self, path: &H5Path, value: Value) -> EntryId {
+        self.insert_entry(
+            path,
+            Group {
+                value,
+                children: None,
+            },
+        )
     }
 
-    #[must_use = "This method does not modify the cache and returns false if the parent does not exist"]
-    pub fn insert_children<
+    pub fn insert_leaf(&mut self, path: &H5Path, value: Value) -> EntryId {
+        self.insert_entry(path, Leaf { value })
+    }
+
+    pub fn insert_entry(&mut self, path: &H5Path, entry: Entry<Value>) -> EntryId {
+        self.objects.insert_full(path.normalized(), entry).0.into()
+    }
+
+    pub fn insert_children<Key, Values>(&mut self, parent: Key, children: Values) -> Result<()>
+    where
         Key: CacheKey<Entry<Value>>,
-        Values: IntoIterator<Item = (H5Path, Value)>,
-    >(
-        &mut self,
-        parent: Key,
-        children: Values,
-    ) -> bool {
+        Values: IntoIterator<Item = (H5Path, Value, bool)>,
+    {
         if !parent.is_in_cache(&self.objects) {
-            return false;
+            bail!("Parent does not exist in cache");
         }
         let child_ids = children
             .into_iter()
-            .map(|(path, data)| self.insert(path, data))
+            .map(|(path, data, is_group)| {
+                if is_group {
+                    self.insert_group(&path, data)
+                } else {
+                    self.insert_leaf(&path, data)
+                }
+            })
             .collect::<SmallVec<_, 4>>();
         let parent = self.get_mut(parent).unwrap();
-        parent.insert_children(child_ids);
-        true
+        parent.insert_children(child_ids)
     }
 }
 
 impl<Value> Entry<Value> {
     pub fn value(&self) -> &Value {
-        &self.value
+        match self {
+            Group { value, .. } => value,
+            Leaf { value } => value,
+        }
     }
 
     pub fn value_mut(&mut self) -> &mut Value {
-        &mut self.value
+        match self {
+            Group { value, .. } => value,
+            Leaf { value } => value,
+        }
     }
 
-    pub fn children(&self) -> Option<&[EntryId]> {
-        self.children.as_ref().map(|ids| ids.as_slice())
-    }
-
-    pub fn set_children<C: Into<SmallVec<EntryId, 4>>>(&mut self, children: C) {
-        self.children = Some(children.into());
-    }
-
-    pub fn insert_children<C: IntoIterator<Item = EntryId>>(&mut self, children: C) {
-        self.children
-            .get_or_insert_with(SmallVec::new)
-            .extend(children);
+    pub fn insert_children<C: IntoIterator<Item = EntryId>>(&mut self, children: C) -> Result<()> {
+        match self {
+            Leaf { .. } => bail!("Cannot insert children into a leaf"),
+            Group { children: c, .. } => {
+                c.get_or_insert_with(SmallVec::new).extend(children);
+                Ok(())
+            }
+        }
     }
 }
 
 impl From<usize> for EntryId {
     fn from(index: usize) -> Self {
         Self(index)
-    }
-}
-
-impl<Value> From<Value> for Entry<Value> {
-    fn from(value: Value) -> Self {
-        Self {
-            value,
-            children: None,
-        }
     }
 }
 
@@ -122,35 +135,35 @@ pub trait CacheKey<Entry> {
 
 impl<Entry> CacheKey<Entry> for H5Path {
     fn get_cache_entry<'m>(&self, objects: &'m IndexMap<H5Path, Entry>) -> Option<&'m Entry> {
-        objects.get(self)
+        objects.get(&self.normalized())
     }
 
     fn get_cache_entry_mut<'m>(
         &self,
         objects: &'m mut IndexMap<H5Path, Entry>,
     ) -> Option<&'m mut Entry> {
-        objects.get_mut(self)
+        objects.get_mut(&self.normalized())
     }
 
     fn is_in_cache(&self, objects: &IndexMap<H5Path, Entry>) -> bool {
-        objects.contains_key(self)
+        objects.contains_key(&self.normalized())
     }
 }
 
 impl<Entry> CacheKey<Entry> for &H5Path {
     fn get_cache_entry<'m>(&self, objects: &'m IndexMap<H5Path, Entry>) -> Option<&'m Entry> {
-        objects.get(*self)
+        objects.get(&self.normalized())
     }
 
     fn get_cache_entry_mut<'m>(
         &self,
         objects: &'m mut IndexMap<H5Path, Entry>,
     ) -> Option<&'m mut Entry> {
-        objects.get_mut(*self)
+        objects.get_mut(&self.normalized())
     }
 
     fn is_in_cache(&self, objects: &IndexMap<H5Path, Entry>) -> bool {
-        objects.contains_key(*self)
+        objects.contains_key(&self.normalized())
     }
 }
 
@@ -192,16 +205,31 @@ mod tests {
     use pretty_assertions::assert_eq;
     use smallvec::smallvec;
 
+    fn assert_children(entry: &Entry<i32>, expected: Option<SmallVec<EntryId, 4>>) {
+        match entry {
+            Group { children, .. } => {
+                assert_eq!(*children, expected);
+            }
+            Leaf { .. } => {
+                assert!(false)
+            }
+        }
+    }
+
+    fn assert_leaf(entry: &Entry<i32>) {
+        assert!(matches!(entry, Leaf { .. }));
+    }
+
     #[test]
     fn get_entry_by_path() {
-        let root = H5Path::from("/root".to_string());
-        let a = H5Path::from("/root/a".to_string());
-        let b = H5Path::from("/root/b".to_string());
+        let root = H5Path::from("/root");
+        let a = H5Path::from("/root/a");
+        let b = H5Path::from("/root/b");
         let cache = {
             let mut cache = FileCache::<i32>::default();
-            cache.insert(root.clone(), 4);
-            cache.insert(a.clone(), 6);
-            cache.insert(b.clone(), 9);
+            cache.insert_group(&root, 4);
+            cache.insert_leaf(&a, 6);
+            cache.insert_group(&b, 9);
             cache
         };
         assert_eq!(cache.get(root).unwrap().value(), &4);
@@ -213,9 +241,9 @@ mod tests {
     fn get_entry_by_id() {
         let (cache, (root, a, b)) = {
             let mut cache = FileCache::<i32>::default();
-            let root = cache.insert(H5Path::from("/root".to_string()), 4);
-            let a = cache.insert(H5Path::from("/root/a".to_string()), 6);
-            let b = cache.insert(H5Path::from("/root/b".to_string()), 9);
+            let root = cache.insert_group(&H5Path::from("/root"), 4);
+            let a = cache.insert_leaf(&H5Path::from("/root/a"), 6);
+            let b = cache.insert_group(&H5Path::from("/root/b"), 9);
             (cache, (root, a, b))
         };
         assert_eq!(cache.get(root).unwrap().value(), &4);
@@ -224,41 +252,57 @@ mod tests {
     }
 
     #[test]
-    fn inserting_does_not_populate_children() {
-        let root = H5Path::from("/root".to_string());
-        let a = H5Path::from("/root/a".to_string());
-        let b = H5Path::from("/root/b".to_string());
+    fn get_entry_by_path_auto_normalized() {
         let cache = {
             let mut cache = FileCache::<i32>::default();
-            cache.insert(root.clone(), 4);
-            cache.insert(a.clone(), 6);
-            cache.insert(b.clone(), 9);
+            cache.insert_group(&H5Path::from("/root/"), 4);
             cache
         };
-        assert_eq!(cache.get(root).unwrap().children(), None);
-        assert_eq!(cache.get(a).unwrap().children(), None);
-        assert_eq!(cache.get(b).unwrap().children(), None);
+        assert_eq!(cache.get(H5Path::from("/root")).unwrap().value(), &4);
+        assert_eq!(cache.get(H5Path::from("/root/")).unwrap().value(), &4);
+        assert_eq!(cache.get(H5Path::from("/root//")).unwrap().value(), &4);
+    }
+
+    #[test]
+    fn inserting_does_not_populate_children() {
+        let root = H5Path::from("/root");
+        let a = H5Path::from("/root/a");
+        let b = H5Path::from("/root/b");
+        let cache = {
+            let mut cache = FileCache::<i32>::default();
+            cache.insert_group(&root, 4);
+            cache.insert_leaf(&a, 6);
+            cache.insert_group(&b, 9);
+            cache
+        };
+        assert_children(cache.get(root).unwrap(), None);
+        assert_leaf(cache.get(a).unwrap());
+        assert_children(cache.get(b).unwrap(), None);
     }
 
     #[test]
     fn insert_children() {
-        let root = H5Path::from("/root".to_string());
-        let a = H5Path::from("/root/a".to_string());
-        let b = H5Path::from("/root/b".to_string());
-        let c = H5Path::from("/root/b/c".to_string());
+        let root = H5Path::from("/root");
+        let a = H5Path::from("/root/a");
+        let b = H5Path::from("/root/b");
+        let c = H5Path::from("/root/b/c");
         let cache = {
             let mut cache = FileCache::<i32>::default();
-            let root_id = cache.insert(root.clone(), 4);
-            cache.insert_children(root_id, [(a.clone(), 6), (b.clone(), 9)]);
-            cache.insert_children(b.clone(), std::iter::once((c.clone(), 11)));
+            let root_id = cache.insert_group(&root, 4);
+            cache
+                .insert_children(root_id, [(a.clone(), 6, false), (b.clone(), 9, true)])
+                .unwrap();
+            cache
+                .insert_children(b.clone(), std::iter::once((c.clone(), 11, true)))
+                .unwrap();
             cache
         };
         let a_id = cache.get_with_id(&a).unwrap().0;
         let b_id = cache.get_with_id(&b).unwrap().0;
         let c_id = cache.get_with_id(&c).unwrap().0;
         let root_entry = cache.get(root).unwrap();
-        assert_eq!(root_entry.children, Some(smallvec![a_id, b_id]));
+        assert_children(root_entry, Some(smallvec![a_id, b_id]));
         let b_entry = cache.get(b).unwrap();
-        assert_eq!(b_entry.children, Some(smallvec![c_id]));
+        assert_children(b_entry, Some(smallvec![c_id]));
     }
 }

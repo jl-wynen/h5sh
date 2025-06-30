@@ -1,4 +1,4 @@
-mod cache;
+pub mod cache;
 mod error;
 mod file;
 mod object;
