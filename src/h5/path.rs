@@ -28,29 +28,55 @@ impl H5Path {
         }
     }
 
+    pub fn push(&mut self, segment: &str) {
+        if !self.raw.ends_with('/') {
+            self.raw.push('/');
+        }
+        self.raw.push_str(segment);
+    }
+
     pub fn name(&self) -> &str {
         let raw = self.raw.trim_end_matches('/');
         raw.rsplit_once('/').map_or(raw, |(_, name)| name)
     }
 
+    pub fn parent(&self) -> Self {
+        self.raw.rsplit_once('/').map_or_else(
+            || Self::from(""),
+            |(p, _)| {
+                if p.is_empty() && self.is_absolute() {
+                    Self::root()
+                } else {
+                    Self::from(p)
+                }
+            },
+        )
+    }
+
     pub fn split_parent(&self) -> (Self, &str) {
-        if self.raw == "/" {
-            (self.clone(), "")
-        } else {
-            self.raw.rsplit_once('/').map_or_else(
-                || (Self::root(), ""),
-                |(parent, name)| (Self::from(parent.to_string()), name),
-            )
-        }
+        self.raw.rsplit_once('/').map_or_else(
+            || (Self::from(""), self.as_raw()),
+            |(parent, name)| {
+                if parent.is_empty() && self.is_absolute() {
+                    (Self::root(), name)
+                } else {
+                    (Self::from(parent.to_string()), name)
+                }
+            },
+        )
     }
 
     pub fn segments(&self) -> impl Iterator<Item = &str> {
-        self.raw.split('/')
+        self.raw.split('/').filter(|s| !s.is_empty())
     }
 
     pub fn normalized(&self) -> Self {
-        Self {
-            raw: self.raw.trim_end_matches('/').to_string(),
+        if self.raw == "/" {
+            self.clone()
+        } else {
+            Self {
+                raw: self.raw.trim_end_matches('/').to_string(),
+            }
         }
     }
 
