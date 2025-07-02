@@ -80,6 +80,22 @@ impl H5Path {
         }
     }
 
+    pub fn resolve(&self) -> Self {
+        let mut segments = Vec::with_capacity(2);
+        for segment in self.segments() {
+            if segment == ".." {
+                segments.pop();
+            } else if !segment.is_empty() {
+                segments.push(segment);
+            }
+        }
+        let mut new = segments.join("/");
+        if self.is_absolute() {
+            new = format!("/{}", new);
+        }
+        Self { raw: new }
+    }
+
     pub fn as_raw(&self) -> &str {
         &self.raw
     }
@@ -225,5 +241,85 @@ mod tests {
     fn name_trailing_slash() {
         let path = H5Path::from("group/object/");
         assert_eq!(path.name(), "object");
+    }
+
+    #[test]
+    fn resolve_empty_path() {
+        let path = H5Path::from("".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_root_path() {
+        let path = H5Path::from("/".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_absolute_path() {
+        let path = H5Path::from("/dir/group/ds".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/dir/group/ds".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_one_up_segment() {
+        let path = H5Path::from("/a/b/../c".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/a/c".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_many_up_segment() {
+        let path = H5Path::from("/a/../b/c/../../d/e".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/d/e".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_only_up_segment() {
+        let path = H5Path::from("..".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_only_up_from_root_segment() {
+        let path = H5Path::from("/..".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_initial_up_segment() {
+        let path = H5Path::from("../a".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("a".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_initial_up_past_root() {
+        let path = H5Path::from("/a/b/c/../../../../".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_removes_duplicate_slashes() {
+        let path = H5Path::from("/a//b/c//..///d".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/a/b/d".to_string());
+        assert_eq!(resolved, expected);
     }
 }
