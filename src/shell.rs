@@ -28,8 +28,8 @@ impl Shell {
         &self.commands
     }
 
-    pub fn get_command(&self, name: &str) -> Option<Rc<dyn Command>> {
-        self.commands.get(name).cloned()
+    pub fn get_command(&self, name: &str) -> Option<&dyn Command> {
+        self.commands.get(name).map(|c| c.as_ref())
     }
 
     pub fn get_working_dir(&self) -> &H5Path {

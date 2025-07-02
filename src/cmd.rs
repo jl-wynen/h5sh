@@ -3,7 +3,6 @@ use crate::h5::{H5Error, H5File};
 use crate::shell::Shell;
 use indexmap::IndexMap;
 use std::fmt::Display;
-use std::rc::Rc;
 
 pub trait Command {
     fn run(&self, args: clap::ArgMatches, shell: &mut Shell, file: &mut H5File) -> CmdResult;
@@ -11,15 +10,15 @@ pub trait Command {
     fn arg_parser(&self) -> clap::Command;
 }
 
-pub type CommandMap = IndexMap<String, Rc<dyn Command>>;
+pub type CommandMap = IndexMap<String, Box<dyn Command>>;
 
 pub fn commands() -> CommandMap {
     let mut cmds = CommandMap::new();
-    // cmds.insert("cd".to_string(), Rc::new(Cd));
-    // cmds.insert("exit".to_string(), Rc::new(Exit));
-    // cmds.insert("help".to_string(), Rc::new(Help));
-    // cmds.insert("ls".to_string(), Rc::new(Ls));
-    // cmds.insert("pwd".to_string(), Rc::new(Pwd));
+    // cmds.insert("cd".to_string(), Box::new(Cd));
+    // cmds.insert("exit".to_string(), Box::new(Exit));
+    // cmds.insert("help".to_string(), Box::new(Help));
+    // cmds.insert("ls".to_string(), Box::new(Ls));
+    // cmds.insert("pwd".to_string(), Box::new(Pwd));
     cmds
 }
 
