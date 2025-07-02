@@ -1,7 +1,7 @@
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser};
 
 use crate::cmd::{CmdResult, Command, CommandError};
-use crate::h5::{H5File, H5Path};
+use crate::h5::{H5File, H5Object, H5Path};
 use crate::shell::Shell;
 
 #[derive(Clone, Copy, Default)]
@@ -12,13 +12,16 @@ impl Command for Cd {
         let Ok(args) = Arguments::from_arg_matches(&args) else {
             return Err(CommandError::Critical("Failed to extract args".to_string()));
         };
-        // TODO do not cd into anything except groups
         let full_path = shell.resolve_path(&args.path);
         match file.load(&full_path) {
-            Ok(_) => {
-                shell.set_working_dir(full_path);
-                Ok(())
-            }
+            Ok(object) => match object {
+                H5Object::Group(_) => {
+                    dbg!(object);
+                    shell.set_working_dir(full_path);
+                    Ok(())
+                }
+                _ => Err(CommandError::Error(format!("Not a group: {full_path}"))),
+            },
             Err(err) => Err(err.into()),
         }
     }
