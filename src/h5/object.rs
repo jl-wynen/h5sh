@@ -1,3 +1,5 @@
+use hdf5::LocationType;
+
 use crate::h5::Result;
 use crate::h5::{H5Error, H5Path};
 
@@ -31,14 +33,14 @@ impl H5Group {
 
 impl H5Object {
     pub fn from_location(path: H5Path, location: &hdf5::Location) -> Result<Self> {
-        if let Ok(group) = location.as_group() {
-            Ok(H5Group { path }.into())
-        } else if let Ok(dataset) = location.as_dataset() {
-            Ok(H5Object::Dataset(H5Dataset { path }))
-        } else {
-            Err(H5Error::Other(
-                "Location does not contain a supported H6Object".to_string(),
-            ))
+        match location.loc_type() {
+            Ok(LocationType::Group) => Ok(H5Group { path }.into()),
+            Ok(LocationType::Dataset) => Ok(H5Object::Dataset(H5Dataset { path })),
+            Ok(_) => Err(H5Error::Other("Unsupported location type".to_string())),
+            Err(e) => Err(H5Error::Other(format!(
+                "Unable to determine location type: {}",
+                e.to_string()
+            ))),
         }
     }
 }
