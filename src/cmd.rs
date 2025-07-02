@@ -16,11 +16,11 @@ pub type CommandMap = IndexMap<String, Rc<dyn Command>>;
 
 pub fn commands() -> CommandMap {
     let mut cmds = CommandMap::new();
-    // cmds.insert("cd".to_string(), Rc::new(Cd));
-    // cmds.insert("exit".to_string(), Rc::new(Exit));
+    cmds.insert("cd".to_string(), Rc::new(commands::Cd));
+    cmds.insert("exit".to_string(), Rc::new(commands::Exit));
     cmds.insert("help".to_string(), Rc::new(commands::Help));
-    // cmds.insert("ls".to_string(), Rc::new(Ls));
-    // cmds.insert("pwd".to_string(), Rc::new(Pwd));
+    // cmds.insert("ls".to_string(), Rc::new(commands::Ls));
+    cmds.insert("pwd".to_string(), Rc::new(commands::Pwd));
     cmds
 }
 
