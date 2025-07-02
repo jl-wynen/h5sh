@@ -1,4 +1,5 @@
 mod cmd;
+mod commands;
 mod h5;
 mod line_editor;
 mod output;
@@ -8,6 +9,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use cmd::CommandOutcome;
 use line_editor::Poll;
 
 fn main() -> ExitCode {
@@ -31,9 +33,17 @@ fn main() -> ExitCode {
     let mut exit_code = ExitCode::SUCCESS;
     loop {
         match editor.poll() {
-            Poll::Cmd(input) => {
-                println!("CMD: '{input}'");
-            }
+            Poll::Cmd(input) => match shell.parse_and_execute_input(&input, &mut h5file) {
+                CommandOutcome::ExitFailure => {
+                    exit_code = ExitCode::FAILURE;
+                    break;
+                }
+                CommandOutcome::ExitSuccess => {
+                    exit_code = ExitCode::SUCCESS;
+                    break;
+                }
+                CommandOutcome::KeepRunning => {}
+            },
             Poll::Skip => {}
             Poll::Exit => break,
             Poll::Error(err) => {

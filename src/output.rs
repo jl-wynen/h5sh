@@ -7,7 +7,7 @@ use std::fmt::Display;
 use std::io::{Write, stderr, stdout};
 use term_grid::{Direction, Filling, Grid, GridOptions};
 
-use crate::cmd::CmdError;
+use crate::cmd::CommandError;
 
 pub struct Printer {
     style: Style,
@@ -36,10 +36,10 @@ impl Printer {
         let _ = stdout().write_all(grid.to_string().as_bytes());
     }
 
-    pub fn print_cmd_error(&self, error: &CmdError) {
+    pub fn print_cmd_error(&self, error: &CommandError) {
         let mut stderr = stderr();
         match error {
-            CmdError::Error(message) => {
+            CommandError::Error(message) => {
                 let _ = queue!(
                     stderr,
                     SetForegroundColor(Color::DarkRed),
@@ -49,8 +49,8 @@ impl Printer {
                     Print("\n"),
                 );
             }
-            CmdError::NoMessage => {}
-            CmdError::Critical(message) => {
+            CommandError::NoMessage => {}
+            CommandError::Critical(message) => {
                 let _ = queue!(
                     stderr,
                     SetForegroundColor(Color::Red),
@@ -61,7 +61,7 @@ impl Printer {
                     Print("\n"),
                 );
             }
-            CmdError::Exit => {}
+            CommandError::Exit => {}
         }
         let _ = stderr.flush();
     }

@@ -1,8 +1,10 @@
-// use crate::commands::{Cd, Exit, Help, Ls, Pwd};
-use crate::h5::{H5Error, H5File};
-use crate::shell::Shell;
 use indexmap::IndexMap;
 use std::fmt::Display;
+use std::rc::Rc;
+
+use crate::commands;
+use crate::h5::{H5Error, H5File};
+use crate::shell::Shell;
 
 pub trait Command {
     fn run(&self, args: clap::ArgMatches, shell: &mut Shell, file: &mut H5File) -> CmdResult;
@@ -10,20 +12,30 @@ pub trait Command {
     fn arg_parser(&self) -> clap::Command;
 }
 
-pub type CommandMap = IndexMap<String, Box<dyn Command>>;
+pub type CommandMap = IndexMap<String, Rc<dyn Command>>;
 
 pub fn commands() -> CommandMap {
     let mut cmds = CommandMap::new();
-    // cmds.insert("cd".to_string(), Box::new(Cd));
-    // cmds.insert("exit".to_string(), Box::new(Exit));
-    // cmds.insert("help".to_string(), Box::new(Help));
-    // cmds.insert("ls".to_string(), Box::new(Ls));
-    // cmds.insert("pwd".to_string(), Box::new(Pwd));
+    // cmds.insert("cd".to_string(), Rc::new(Cd));
+    // cmds.insert("exit".to_string(), Rc::new(Exit));
+    cmds.insert("help".to_string(), Rc::new(commands::Help));
+    // cmds.insert("ls".to_string(), Rc::new(Ls));
+    // cmds.insert("pwd".to_string(), Rc::new(Pwd));
     cmds
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum CommandOutcome {
+    /// Keep the shell running and process the next command.
+    KeepRunning,
+    /// Exit the shell after a failure without processing further commands.
+    ExitFailure,
+    /// Exit the shell without processing further commands.
+    ExitSuccess,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CmdError {
+pub enum CommandError {
     /// The command failed.
     Error(String),
     /// The command failed and printed its own error message.
@@ -34,21 +46,21 @@ pub enum CmdError {
     Exit,
 }
 
-pub type CmdResult = Result<(), CmdError>;
+pub type CmdResult = Result<(), CommandError>;
 
-impl Display for CmdError {
+impl Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CmdError::Error(msg) => f.write_str(msg),
-            CmdError::NoMessage => Ok(()),
-            CmdError::Critical(msg) => f.write_str(msg),
-            CmdError::Exit => Ok(()),
+            CommandError::Error(msg) => f.write_str(msg),
+            CommandError::NoMessage => Ok(()),
+            CommandError::Critical(msg) => f.write_str(msg),
+            CommandError::Exit => Ok(()),
         }
     }
 }
 
-impl From<H5Error> for CmdError {
+impl From<H5Error> for CommandError {
     fn from(err: H5Error) -> Self {
-        CmdError::Error(err.to_string())
+        CommandError::Error(err.to_string())
     }
 }
