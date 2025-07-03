@@ -8,12 +8,11 @@ use crossterm::{
     ExecutableCommand, QueueableCommand,
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
-use std::any::Any;
 use std::fmt::{Display, Formatter};
 use std::io::{Write, stdout};
 
 use crate::cmd::{CmdResult, Command, CommandError};
-use crate::h5::{H5File, H5Object, H5Path};
+use crate::h5::{H5Dataset, H5File, H5Object, H5Path};
 use crate::output::Printer;
 use crate::shell::Shell;
 
@@ -120,8 +119,9 @@ fn print_object_grid(objects: Vec<(&str, &H5Object)>, printer: &Printer) {
 fn print_object_table(objects: Vec<(&str, &H5Object)>, printer: &Printer) -> std::io::Result<()> {
     let bump = Bump::new();
     let columns = [
-        build_shape_column(&bump, &objects, printer)?,
+        build_shape_column(&bump, &objects)?,
         build_size_column(&bump, &objects, printer)?,
+        build_dtype_column(&bump, &objects, printer)?,
         build_name_column(&bump, &objects, printer)?,
     ];
     let widths: BumpVec<_> = columns
@@ -181,6 +181,22 @@ fn build_name_column<'alloc>(
     Ok(column)
 }
 
+fn format_object_name<'alloc>(
+    name: &str,
+    object: &H5Object,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> BumpString<'alloc> {
+    match object {
+        H5Object::Dataset(_) => printer.apply_style_dataset_in(name, bump),
+        H5Object::Group(_) => {
+            let mut formatted = printer.apply_style_group_in(name, bump);
+            formatted.push('/');
+            formatted
+        }
+    }
+}
+
 fn build_size_column<'alloc>(
     bump: &'alloc Bump,
     objects: &[(&str, &H5Object)],
@@ -220,7 +236,6 @@ fn build_size_column<'alloc>(
 fn build_shape_column<'alloc>(
     bump: &'alloc Bump,
     objects: &[(&str, &H5Object)],
-    printer: &Printer,
 ) -> std::io::Result<Column<'alloc>> {
     let mut column = Column {
         widths: BumpVec::with_capacity_in(objects.len(), bump),
@@ -248,7 +263,7 @@ fn format_shape<'alloc>(
     shape: &[usize],
     bump: &'alloc Bump,
 ) -> std::io::Result<(usize, BumpString<'alloc>)> {
-    let mut width = 0;
+    let mut width = 2; // initial value for parentheses
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer.execute(Print("("))?;
     let mut first = true;
@@ -273,28 +288,74 @@ fn format_shape<'alloc>(
     ))
 }
 
+fn build_dtype_column<'alloc>(
+    bump: &'alloc Bump,
+    objects: &[(&str, &H5Object)],
+    printer: &Printer,
+) -> std::io::Result<Column<'alloc>> {
+    let mut column = Column {
+        widths: BumpVec::with_capacity_in(objects.len(), bump),
+        formatted: BumpVec::with_capacity_in(objects.len(), bump),
+        left_aligned: true,
+    };
+    for (_, object) in objects {
+        match object {
+            H5Object::Dataset(dataset) => {
+                let (width, formatted) = if let Some(descriptor) = get_type_descriptor(dataset) {
+                    format_dtype(&descriptor, printer, bump)?
+                } else {
+                    format_unknown_dtype(bump)?
+                };
+                column.widths.push(width);
+                column.formatted.push(formatted);
+            }
+            H5Object::Group(_) => {
+                column.widths.push(3);
+                column.formatted.push(BumpString::from_str_in("grp", bump));
+            }
+        }
+    }
+    Ok(column)
+}
+
+fn get_type_descriptor(dataset: &H5Dataset) -> Option<hdf5::types::TypeDescriptor> {
+    dataset.underlying().dtype().ok()?.to_descriptor().ok()
+}
+
+fn format_dtype<'alloc>(
+    descriptor: &hdf5::types::TypeDescriptor,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> std::io::Result<(usize, BumpString<'alloc>)> {
+    let dtype = printer.format_dtype(descriptor, bump);
+    let width = dtype.len();
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+    buffer
+        .execute(SetForegroundColor(Color::DarkMagenta))?
+        .execute(Print(dtype))?
+        .execute(ResetColor)?;
+    let formatted = BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump));
+    Ok((width, formatted))
+}
+
+fn format_unknown_dtype(bump: &Bump) -> std::io::Result<(usize, BumpString)> {
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+    buffer
+        .execute(Print('<'))?
+        .execute(SetForegroundColor(Color::DarkMagenta))?
+        .execute(Print('?'))?
+        .execute(ResetColor)?
+        .execute(Print('>'))?;
+    let formatted = BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump));
+    Ok((3, formatted))
+}
+
 const PADDING_BUFFER: &str = "                                    ";
 struct Padding(usize);
 
 impl Display for Padding {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(PADDING_BUFFER.get(0..self.0).unwrap_or(PADDING_BUFFER))
-    }
-}
-
-fn format_object_name<'alloc>(
-    name: &str,
-    object: &H5Object,
-    printer: &Printer,
-    bump: &'alloc Bump,
-) -> BumpString<'alloc> {
-    match object {
-        H5Object::Dataset(_) => printer.apply_style_dataset_in(name, bump),
-        H5Object::Group(_) => {
-            let mut formatted = printer.apply_style_group_in(name, bump);
-            formatted.push('/');
-            formatted
-        }
     }
 }
 

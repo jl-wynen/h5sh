@@ -3,6 +3,7 @@ use crossterm::{
     queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
+use hdf5::types::{FloatSize, IntSize, Reference, TypeDescriptor};
 use lscolors::{Indicator, LsColors};
 use std::fmt::Display;
 use std::io::{Write, stderr, stdout};
@@ -118,6 +119,43 @@ impl Printer {
             size /= 1024;
         }
         let _ = write!(&mut out, "{size}{}", units[units.len() - 1]);
+        out
+    }
+
+    pub fn format_dtype<'alloc>(
+        &self,
+        type_descriptor: &TypeDescriptor,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        use std::fmt::Write;
+        let mut out = BumpString::new_in(bump);
+        let _ = match type_descriptor {
+            TypeDescriptor::Integer(IntSize::U1) => write!(&mut out, "i8"),
+            TypeDescriptor::Integer(IntSize::U2) => write!(&mut out, "i16"),
+            TypeDescriptor::Integer(IntSize::U4) => write!(&mut out, "i32"),
+            TypeDescriptor::Integer(IntSize::U8) => write!(&mut out, "i64"),
+            TypeDescriptor::Unsigned(IntSize::U1) => write!(&mut out, "u8"),
+            TypeDescriptor::Unsigned(IntSize::U2) => write!(&mut out, "u16"),
+            TypeDescriptor::Unsigned(IntSize::U4) => write!(&mut out, "u32"),
+            TypeDescriptor::Unsigned(IntSize::U8) => write!(&mut out, "u64"),
+            TypeDescriptor::Float(FloatSize::U2) => write!(&mut out, "f16"),
+            TypeDescriptor::Float(FloatSize::U4) => write!(&mut out, "f32"),
+            TypeDescriptor::Float(FloatSize::U8) => write!(&mut out, "f64"),
+            TypeDescriptor::Boolean => write!(&mut out, "bool"),
+            TypeDescriptor::Enum(tp) => write!(&mut out, "enum ({})", tp.base_type()),
+            TypeDescriptor::Compound(tp) => {
+                write!(&mut out, "compound ({})", tp.fields.len())
+            }
+            TypeDescriptor::FixedArray(tp, n) => write!(&mut out, "[{tp}; {n}]"),
+            TypeDescriptor::FixedAscii(n) => write!(&mut out, "ascii({n})"),
+            TypeDescriptor::FixedUnicode(n) => write!(&mut out, "utf-8({n})"),
+            TypeDescriptor::VarLenArray(tp) => write!(&mut out, "[{tp}]"),
+            TypeDescriptor::VarLenAscii => write!(&mut out, "ascii"),
+            TypeDescriptor::VarLenUnicode => write!(&mut out, "utf-8"),
+            TypeDescriptor::Reference(Reference::Object) => write!(&mut out, "ref (object)"),
+            TypeDescriptor::Reference(Reference::Region) => write!(&mut out, "ref (region)"),
+            TypeDescriptor::Reference(Reference::Std) => write!(&mut out, "ref"),
+        };
         out
     }
 }
