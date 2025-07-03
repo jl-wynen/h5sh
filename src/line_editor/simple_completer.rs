@@ -131,7 +131,6 @@ where
             .into_iter()
             .map(|(path, value, is_group)| (path, is_group))
             .collect::<Vec<_>>();
-        dbg!(&c);
         let _ = cache.insert_children(path.clone(), load_children(path)?);
     }
     Ok(())

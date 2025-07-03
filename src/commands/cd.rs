@@ -16,7 +16,6 @@ impl Command for Cd {
         match file.load(&full_path) {
             Ok(object) => match object {
                 H5Object::Group(_) => {
-                    dbg!(object);
                     shell.set_working_dir(full_path);
                     Ok(())
                 }
