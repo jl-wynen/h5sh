@@ -19,7 +19,7 @@ pub fn commands() -> CommandMap {
     cmds.insert("cd".to_string(), Rc::new(commands::Cd));
     cmds.insert("exit".to_string(), Rc::new(commands::Exit));
     cmds.insert("help".to_string(), Rc::new(commands::Help));
-    // cmds.insert("ls".to_string(), Rc::new(commands::Ls));
+    cmds.insert("ls".to_string(), Rc::new(commands::Ls));
     cmds.insert("pwd".to_string(), Rc::new(commands::Pwd));
     cmds
 }
