@@ -8,6 +8,7 @@ use crossterm::{
     ExecutableCommand, QueueableCommand,
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
+use std::any::Any;
 use std::fmt::{Display, Formatter};
 use std::io::{Write, stdout};
 
@@ -119,6 +120,7 @@ fn print_object_grid(objects: Vec<(&str, &H5Object)>, printer: &Printer) {
 fn print_object_table(objects: Vec<(&str, &H5Object)>, printer: &Printer) -> std::io::Result<()> {
     let bump = Bump::new();
     let columns = [
+        build_shape_column(&bump, &objects, printer)?,
         build_size_column(&bump, &objects, printer)?,
         build_name_column(&bump, &objects, printer)?,
     ];
@@ -213,6 +215,62 @@ fn build_size_column<'alloc>(
         }
     }
     Ok(column)
+}
+
+fn build_shape_column<'alloc>(
+    bump: &'alloc Bump,
+    objects: &[(&str, &H5Object)],
+    printer: &Printer,
+) -> std::io::Result<Column<'alloc>> {
+    let mut column = Column {
+        widths: BumpVec::with_capacity_in(objects.len(), bump),
+        formatted: BumpVec::with_capacity_in(objects.len(), bump),
+        left_aligned: true,
+    };
+    for (_, object) in objects {
+        match object {
+            H5Object::Dataset(dataset) => {
+                let shape = dataset.underlying().shape();
+                let (width, formatted) = format_shape(&shape, bump)?;
+                column.widths.push(width);
+                column.formatted.push(formatted);
+            }
+            H5Object::Group(_) => {
+                column.widths.push(0);
+                column.formatted.push(BumpString::new_in(bump));
+            }
+        }
+    }
+    Ok(column)
+}
+
+fn format_shape<'alloc>(
+    shape: &[usize],
+    bump: &'alloc Bump,
+) -> std::io::Result<(usize, BumpString<'alloc>)> {
+    let mut width = 0;
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+    buffer.execute(Print("("))?;
+    let mut first = true;
+    for dim in shape {
+        if !first {
+            buffer.execute(Print(", "))?;
+            width += 2;
+        } else {
+            first = false;
+        }
+        let dim_str = dim.to_string();
+        width += dim_str.len();
+        buffer
+            .execute(SetForegroundColor(Color::DarkCyan))?
+            .execute(Print(dim_str))?
+            .execute(ResetColor)?;
+    }
+    buffer.execute(Print(")"))?;
+    Ok((
+        width,
+        BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump)),
+    ))
 }
 
 const PADDING_BUFFER: &str = "                                    ";
