@@ -1,3 +1,4 @@
+use bumpalo::{Bump, collections::String as BumpString};
 use crossterm::{
     queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
@@ -78,15 +79,31 @@ impl Printer {
         let _ = stderr.flush();
     }
 
-    pub fn apply_style_dataset(&self, value: &str) -> String {
-        self.style.apply_dataset(value)
+    pub fn apply_style_dataset_in<'alloc>(
+        &self,
+        value: &str,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        self.style.apply_dataset_in(value, bump)
     }
 
-    pub fn apply_style_group(&self, value: &str) -> String {
-        self.style.apply_group(value)
+    pub fn apply_style_group_in<'alloc>(
+        &self,
+        value: &str,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        self.style.apply_group_in(value, bump)
     }
 
-    pub fn format_human_size(&self, size: u64, short: bool) -> String {
+    pub fn format_human_size_in<'alloc>(
+        &self,
+        size: u64,
+        short: bool,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        use std::fmt::Write;
+        let mut out = BumpString::new_in(bump);
+
         let units = if short {
             &BYTE_UNITS_SHORT
         } else {
@@ -95,11 +112,13 @@ impl Printer {
         let mut size = size;
         for unit in units.iter() {
             if size < 1024 {
-                return format!("{size}{unit}");
+                let _ = write!(&mut out, "{size}{unit}");
+                return out;
             }
             size /= 1024;
         }
-        format!("{size}{}", units[units.len() - 1])
+        let _ = write!(&mut out, "{size}{}", units[units.len() - 1]);
+        out
     }
 }
 
@@ -124,12 +143,19 @@ impl Style {
         }
     }
 
-    fn apply_dataset(&self, value: &str) -> String {
-        self.dataset.paint(value).to_string()
+    fn apply_dataset_in<'alloc>(&self, value: &str, bump: &'alloc Bump) -> BumpString<'alloc> {
+        self.apply_in(self.dataset.paint(value), bump)
     }
 
-    fn apply_group(&self, value: &str) -> String {
-        self.group.paint(value).to_string()
+    fn apply_group_in<'alloc>(&self, value: &str, bump: &'alloc Bump) -> BumpString<'alloc> {
+        self.apply_in(self.group.paint(value), bump)
+    }
+
+    fn apply_in<'alloc>(&self, painted: impl Display, bump: &'alloc Bump) -> BumpString<'alloc> {
+        let mut formatted = BumpString::new_in(bump);
+        use std::fmt::Write;
+        let _ = write!(&mut formatted, "{painted}");
+        formatted
     }
 }
 
