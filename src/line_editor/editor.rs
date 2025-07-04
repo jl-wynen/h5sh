@@ -74,8 +74,8 @@ impl Completer for Hinter {
         _line: &str,
         _pos: usize,
         _ctx: &Context<'_>,
-    ) -> rustyline::Result<(usize, Vec<String>)> {
-        Ok((0, vec![]))
+    ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
+        Ok((0, vec!["/entry".to_string()]))
     }
 }
 
