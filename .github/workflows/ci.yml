@@ -21,7 +21,7 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
         with:
-          toolchain: ${RUST_TOOLCHAIN_VERSION}
+          toolchain: ${{RUST_TOOLCHAIN_VERSION}}
           components: rustfmt
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1.1.1
@@ -35,7 +35,7 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
         with:
-          toolchain: ${RUST_TOOLCHAIN_VERSION}
+          toolchain: ${{RUST_TOOLCHAIN_VERSION}}
           components: clippy
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
@@ -65,7 +65,7 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
         with:
-          toolchain: ${RUST_TOOLCHAIN_VERSION}
+          toolchain: ${{RUST_TOOLCHAIN_VERSION}}
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
       - name: Build
