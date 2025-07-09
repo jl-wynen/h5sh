@@ -18,14 +18,14 @@ pub(super) enum Expression {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct CallExpression {
-    function: StringExpression,
-    arguments: Vec<Argument>,
-    range: TextRange,
+    pub(super) function: StringExpression,
+    pub(super) arguments: Vec<Argument>,
+    pub(super) range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct StringExpression {
-    range: TextRange,
+    pub(super) range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,7 +36,7 @@ pub(super) enum Argument {
 }
 
 impl Argument {
-    fn range(&self) -> TextRange {
+    pub(super) fn range(&self) -> TextRange {
         match self {
             Argument::Plain(expr) => expr.range,
             Argument::Long(expr) => expr.range,

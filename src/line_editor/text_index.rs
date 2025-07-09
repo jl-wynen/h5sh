@@ -35,3 +35,11 @@ impl std::ops::Add<TextIndex> for TextIndex {
         Self::from(self.raw + other.raw)
     }
 }
+
+impl std::ops::Sub<TextIndex> for TextIndex {
+    type Output = TextIndex;
+
+    fn sub(self, other: TextIndex) -> Self::Output {
+        Self::from(self.raw - other.raw)
+    }
+}

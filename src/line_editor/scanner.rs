@@ -43,10 +43,6 @@ impl<'a> Scanner<'a> {
         self.current = new;
         self.current
     }
-
-    pub fn get_range_from_src(&self, range: TextRange) -> &str {
-        &self.src[range]
-    }
 }
 
 fn read_next(chars: &mut Chars) -> char {
