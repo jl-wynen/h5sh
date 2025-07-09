@@ -1,68 +1,165 @@
+use super::scanner::Scanner;
+use super::text_range::TextRange;
+
 #[derive(Clone, Debug)]
 pub(super) struct ParseError {
     what: &'static str,
-    pos: usize,
+    range: TextRange,
 }
 
 pub(super) type Result<T> = std::result::Result<T, ParseError>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct Line<'a> {
-    expressions: Vec<Expression<'a>>,
+pub(super) enum Expression {
+    Call(CallExpression),
+    String(StringExpression),
+    Noop,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum Expression<'a> {
-    Call(CallExpression<'a>),
-    String(StringExpression<'a>),
+pub(super) struct CallExpression {
+    function: StringExpression,
+    arguments: Vec<Argument>,
+    range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct CallExpression<'a> {
-    function: StringExpression<'a>,
-    arguments: Vec<Expression<'a>>,
-    pos: usize,
+pub(super) struct StringExpression {
+    range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct StringExpression<'a> {
-    str: &'a str,
-    pos: usize,
+pub(super) enum Argument {
+    Plain(StringExpression),
+    Long(StringExpression),
+    Short(StringExpression),
 }
 
-pub(super) fn parse_line(input: &str) -> Result<Line> {
-    let (trimmed, starting_pos) = trim_whitespace_start(input, 0);
-    if trimmed.is_empty() {
-        return Ok(Line {
-            expressions: Vec::new(),
-        });
+impl Argument {
+    fn range(&self) -> TextRange {
+        match self {
+            Argument::Plain(expr) => expr.range,
+            Argument::Long(expr) => expr.range,
+            Argument::Short(expr) => expr.range,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct Parser<'a> {
+    scanner: Scanner<'a>,
+    current_range: TextRange,
+}
+
+impl<'a> Parser<'a> {
+    pub(super) fn new(src: &'a str) -> Self {
+        Self {
+            scanner: Scanner::new(src),
+            current_range: Default::default(),
+        }
     }
 
-    let (call, _) = parse_call(trimmed, starting_pos)?;
-    Ok(Line {
-        expressions: vec![Expression::Call(call)],
-    })
-}
+    pub(super) fn parse(&mut self) -> Result<Expression> {
+        self.parse_expression()
+    }
 
-fn parse_call(input: &str, pos: usize) -> Result<(CallExpression, usize)> {
-    let (trimmed, starting_pos) = trim_whitespace_start(input, pos);
-    let (function, pos) = parse_string(trimmed, starting_pos)?;
-    let call = CallExpression {
-        function,
-        arguments: Vec::new(),
-        pos: starting_pos,
-    };
-    Ok((call, pos))
-}
+    fn parse_expression(&mut self) -> Result<Expression> {
+        let Some(call) = self.maybe_parse_call_expression()? else {
+            return Ok(Expression::Noop);
+        };
+        Ok(Expression::Call(call))
+    }
 
-fn parse_string(input: &str, pos: usize) -> Result<(StringExpression, usize)> {
-    Ok((StringExpression { str: input, pos }, pos + input.len()))
-}
+    fn maybe_parse_call_expression(&mut self) -> Result<Option<CallExpression>> {
+        let function = self.parse_string()?;
+        if function.range.is_empty() {
+            return Ok(None);
+        }
+        let mut call_range = function.range;
 
-fn trim_whitespace_start(input: &str, pos: usize) -> (&str, usize) {
-    let trimmed = input.trim_start();
-    let pos = pos + input.len() - trimmed.len();
-    (trimmed, pos)
+        let mut arguments = Vec::new();
+        while let Some(arg) = self.maybe_parse_argument()? {
+            arguments.push(arg);
+        }
+        if let Some(arg) = arguments.last() {
+            call_range.extend_to(arg.range().end());
+        }
+
+        let call = CallExpression {
+            function,
+            arguments,
+            range: call_range,
+        };
+        Ok(Some(call))
+    }
+
+    fn parse_string(&mut self) -> Result<StringExpression> {
+        self.parse_string_with_terminator(|_| false)
+    }
+
+    fn parse_string_with_terminator<T: Fn(char) -> bool>(
+        &mut self,
+        terminator: T,
+    ) -> Result<StringExpression> {
+        self.eat_whitespace();
+        self.start_token();
+        while !self.scanner.current().is_whitespace()
+            && !self.scanner.is_finished()
+            && !terminator(self.scanner.current())
+        {
+            self.scanner.eat();
+        }
+        self.current_range.extend_to(self.scanner.current_index());
+        Ok(StringExpression {
+            range: self.current_range,
+        })
+    }
+
+    fn maybe_parse_argument(&mut self) -> Result<Option<Argument>> {
+        self.eat_whitespace();
+        if self.scanner.current() == '-' {
+            Ok(Some(self.parse_keyword_argument()?))
+        } else {
+            self.parse_plain_argument()
+        }
+    }
+
+    fn parse_plain_argument(&mut self) -> Result<Option<Argument>> {
+        let arg = self.parse_string()?;
+        if arg.range.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(Argument::Plain(arg)))
+        }
+    }
+
+    // This function assumes that scanner.current is the first '-' of the arg.
+    fn parse_keyword_argument(&mut self) -> Result<Argument> {
+        let start = self.scanner.current_index();
+        if self.scanner.eat() == '-' {
+            self.scanner.eat(); // skip over second '-'
+            let mut arg = self.parse_string_with_terminator(|c| c == '=')?;
+            arg.range.extend_backwards_to(start);
+            if self.scanner.current() == '=' {
+                self.scanner.eat(); // skip '=', it has no actual syntactic meaning
+            }
+            Ok(Argument::Long(arg))
+        } else {
+            let mut arg = self.parse_string()?;
+            arg.range.extend_backwards_to(start);
+            Ok(Argument::Short(arg))
+        }
+    }
+
+    fn eat_whitespace(&mut self) {
+        while self.scanner.current().is_whitespace() {
+            self.scanner.eat();
+        }
+    }
+
+    fn start_token(&mut self) {
+        self.current_range = TextRange::start_new(self.scanner.current_index());
+    }
 }
 
 #[cfg(test)]
@@ -73,79 +170,217 @@ mod tests {
     #[test]
     fn parse_empty_line() {
         let line = "";
-        let parsed = parse_line(line).unwrap();
-        let expected = Line {
-            expressions: Vec::new(),
-        };
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Expression::Noop;
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_empty_with_only_one_spaces() {
+        let line = " ";
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Expression::Noop;
         assert_eq!(parsed, expected);
     }
 
     #[test]
     fn parse_empty_with_only_spaces() {
         let line = " \t";
-        let parsed = parse_line(line).unwrap();
-        let expected = Line {
-            expressions: Vec::new(),
-        };
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Expression::Noop;
         assert_eq!(parsed, expected);
     }
 
     #[test]
     fn parse_command_no_args() {
         let line = "command";
-        let parsed = parse_line(line).unwrap();
-        let expected = Line {
-            expressions: vec![Call(CallExpression {
-                function: StringExpression {
-                    str: "command",
-                    pos: 0,
-                },
-                arguments: Vec::new(),
-                pos: 0,
-            })],
-        };
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 7)),
+            },
+            arguments: Vec::new(),
+            range: TextRange::from((0, 7)),
+        });
         assert_eq!(parsed, expected);
     }
 
     #[test]
     fn parse_command_no_args_single_char() {
         let line = "l";
-        let parsed = parse_line(line).unwrap();
-        let expected = Line {
-            expressions: vec![Call(CallExpression {
-                function: StringExpression { str: "l", pos: 0 },
-                arguments: Vec::new(),
-                pos: 0,
-            })],
-        };
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 1)),
+            },
+            arguments: Vec::new(),
+            range: TextRange::from((0, 1)),
+        });
         assert_eq!(parsed, expected);
     }
 
     #[test]
     fn parse_command_no_args_padding_front() {
         let line = " pwd";
-        let parsed = parse_line(line).unwrap();
-        let expected = Line {
-            expressions: vec![Call(CallExpression {
-                function: StringExpression { str: "pwd", pos: 1 },
-                arguments: Vec::new(),
-                pos: 1,
-            })],
-        };
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((1, 4)),
+            },
+            arguments: Vec::new(),
+            range: TextRange::from((1, 4)),
+        });
         assert_eq!(parsed, expected);
     }
 
     #[test]
     fn parse_command_no_args_padding_back() {
         let line = "cd  ";
-        let parsed = parse_line(line).unwrap();
-        let expected = Line {
-            expressions: vec![Call(CallExpression {
-                function: StringExpression { str: "cd", pos: 0 },
-                arguments: Vec::new(),
-                pos: 0,
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 2)),
+            },
+            arguments: Vec::new(),
+            range: TextRange::from((0, 2)),
+        });
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_command_args_plain() {
+        let line = "cd /path";
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 2)),
+            },
+            arguments: vec![Argument::Plain(StringExpression {
+                range: TextRange::from((3, 8)),
             })],
-        };
+            range: TextRange::from((0, 8)),
+        });
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_command_args_plain_single_char() {
+        let line = "cd .";
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 2)),
+            },
+            arguments: vec![Argument::Plain(StringExpression {
+                range: TextRange::from((3, 4)),
+            })],
+            range: TextRange::from((0, 4)),
+        });
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_command_args_plain_plain() {
+        let line = "foo /path  other.*";
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 3)),
+            },
+            arguments: vec![
+                Argument::Plain(StringExpression {
+                    range: TextRange::from((4, 9)),
+                }),
+                Argument::Plain(StringExpression {
+                    range: TextRange::from((11, 18)),
+                }),
+            ],
+            range: TextRange::from((0, 18)),
+        });
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_command_args_short() {
+        let line = "ls -l";
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 2)),
+            },
+            arguments: vec![Argument::Short(StringExpression {
+                range: TextRange::from((3, 5)),
+            })],
+            range: TextRange::from((0, 5)),
+        });
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_command_args_long() {
+        let line = "ls --list";
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 2)),
+            },
+            arguments: vec![Argument::Long(StringExpression {
+                range: TextRange::from((3, 9)),
+            })],
+            range: TextRange::from((0, 9)),
+        });
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_command_args_many() {
+        let line = " function\targ1 -l short --long=value   --other-long\t /more/stuff -x  ";
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((1, 9)), // function
+            },
+            arguments: vec![
+                Argument::Plain(StringExpression {
+                    range: TextRange::from((10, 14)), // arg1
+                }),
+                Argument::Short(StringExpression {
+                    range: TextRange::from((15, 17)), // -l
+                }),
+                Argument::Plain(StringExpression {
+                    range: TextRange::from((18, 23)), // short
+                }),
+                Argument::Long(StringExpression {
+                    range: TextRange::from((24, 30)), // --long
+                }),
+                Argument::Plain(StringExpression {
+                    range: TextRange::from((31, 36)), // value
+                }),
+                Argument::Long(StringExpression {
+                    range: TextRange::from((39, 51)), // --other-long
+                }),
+                Argument::Plain(StringExpression {
+                    range: TextRange::from((53, 64)), // /more/stuff
+                }),
+                Argument::Short(StringExpression {
+                    range: TextRange::from((65, 67)), // -x
+                }),
+            ],
+            range: TextRange::from((1, 67)),
+        });
         assert_eq!(parsed, expected);
     }
 }
