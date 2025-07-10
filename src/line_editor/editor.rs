@@ -159,10 +159,10 @@ impl<'a> InputHighlighter<'a> {
                 self.highlight_string(string, None, None, src)?;
             }
             Argument::Long(string) => {
-                self.highlight_string(string, None, None, src)?;
+                self.highlight_string(string, Some(Color::Yellow), None, src)?;
             }
             Argument::Short(string) => {
-                self.highlight_string(string, None, None, src)?;
+                self.highlight_string(string, Some(Color::Yellow), None, src)?;
             }
         }
         Ok(())
