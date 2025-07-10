@@ -126,7 +126,8 @@ impl<'a> InputHighlighter<'a> {
     }
 
     fn highlight(mut self, expression: &Expression, src: &str) -> std::io::Result<String> {
-        self.buffer.reserve(2 * src.len());
+        // Allocated enough space for most cases
+        self.buffer.reserve((2 * src.len()).max(16));
         self.highlight_expression(expression, src)?;
         self.unstyled_to(src.len().into(), src)?;
         Ok(String::from_utf8(self.buffer).unwrap_or_else(|_| src.to_string()))
