@@ -1,6 +1,6 @@
 use crossterm::{
     ExecutableCommand,
-    style::{Color, Print, ResetColor, SetForegroundColor},
+    style::{Attribute, Color, Print, PrintStyledContent, Stylize, style},
 };
 use log::info;
 use rustyline::{
@@ -12,6 +12,7 @@ use rustyline::{
     history::DefaultHistory,
 };
 use std::borrow::Cow;
+use std::collections::HashSet;
 
 use super::parse::{Argument, Expression, Parser, StringExpression};
 use super::text_index::TextIndex;
@@ -23,9 +24,9 @@ pub struct LineEditor {
 }
 
 impl LineEditor {
-    pub fn new() -> rustyline::Result<Self> {
+    pub fn new(commands: HashSet<String>) -> rustyline::Result<Self> {
         let mut editor = UnderlyingEditor::with_config(configuration()?)?;
-        editor.set_helper(Some(Hinter));
+        editor.set_helper(Some(Hinter { commands }));
         if editor.load_history(&history_path()).is_err() {
             info!("No previous history.");
         }
@@ -73,7 +74,9 @@ pub enum Poll {
 }
 
 #[derive(Helper, Hinter, Validator)]
-struct Hinter;
+struct Hinter {
+    commands: HashSet<String>,
+}
 
 impl Completer for Hinter {
     type Candidate = String;
@@ -94,47 +97,56 @@ impl Highlighter for Hinter {
             return Cow::Borrowed(line);
         };
 
-        if let Ok(highlighted) = InputHighlighter::new().highlight(&expression, line) {
+        if let Ok(highlighted) = InputHighlighter::new(&self.commands).highlight(&expression, line)
+        {
             Cow::Owned(highlighted)
         } else {
             Cow::Borrowed(line)
         }
     }
 
-    fn highlight_char(&self, _line: &str, _pos: usize, _kind: CmdKind) -> bool {
-        true // TODO optimise
+    fn highlight_char(&self, _line: &str, _pos: usize, kind: CmdKind) -> bool {
+        !matches!(kind, CmdKind::MoveCursor) // TODO optimise
     }
 }
 
-struct InputHighlighter {
+struct InputHighlighter<'a> {
     buffer: Vec<u8>,
     pos: TextIndex,
+    commands: &'a HashSet<String>,
 }
 
-impl InputHighlighter {
-    fn new() -> Self {
+impl<'a> InputHighlighter<'a> {
+    fn new(commands: &'a HashSet<String>) -> Self {
         Self {
             buffer: Vec::default(),
             pos: TextIndex::default(),
+            commands,
         }
     }
 
     fn highlight(mut self, expression: &Expression, src: &str) -> std::io::Result<String> {
         self.buffer.reserve(2 * src.len());
         self.highlight_expression(expression, src)?;
+        self.unstyled_to(src.len().into(), src)?;
         Ok(String::from_utf8(self.buffer).unwrap_or_else(|_| src.to_string()))
     }
 
     fn highlight_expression(&mut self, expr: &Expression, src: &str) -> std::io::Result<()> {
         match expr {
             Expression::Call(call) => {
-                self.highlight_string(&call.function, src)?;
+                let function_color = if self.commands.contains(&src[call.function.range]) {
+                    Some(Color::White)
+                } else {
+                    Some(Color::Red)
+                };
+                self.highlight_string(&call.function, function_color, Some(Attribute::Bold), src)?;
                 for arg in &call.arguments {
                     self.highlight_argument(arg, src)?;
                 }
             }
             Expression::String(string) => {
-                self.highlight_string(string, src)?;
+                self.highlight_string(string, None, None, src)?;
             }
             Expression::Noop => {}
         }
@@ -144,26 +156,44 @@ impl InputHighlighter {
     fn highlight_argument(&mut self, arg: &Argument, src: &str) -> std::io::Result<()> {
         match arg {
             Argument::Plain(string) => {
-                self.highlight_string(string, src)?;
+                self.highlight_string(string, None, None, src)?;
             }
             Argument::Long(string) => {
-                self.highlight_string(string, src)?;
+                self.highlight_string(string, None, None, src)?;
             }
             Argument::Short(string) => {
-                self.highlight_string(string, src)?;
+                self.highlight_string(string, None, None, src)?;
             }
         }
         Ok(())
     }
 
-    fn highlight_string(&mut self, string: &StringExpression, src: &str) -> std::io::Result<()> {
-        if self.pos < string.range.start() {
-            self.buffer.execute(Print(
-                " ".repeat((string.range.start() - self.pos).as_index()),
-            ))?;
+    fn highlight_string(
+        &mut self,
+        string: &StringExpression,
+        foreground: Option<Color>,
+        attribute: Option<Attribute>,
+        src: &str,
+    ) -> std::io::Result<()> {
+        self.unstyled_to(string.range.start(), src)?;
+        let mut styled = src[string.range].stylize();
+        if let Some(foreground) = foreground {
+            styled = styled.with(foreground);
         }
-        self.buffer.execute(Print(&src[string.range]))?;
+        if let Some(attribute) = attribute {
+            styled = styled.attribute(attribute);
+        }
+        self.buffer.execute(PrintStyledContent(styled))?;
         self.pos = string.range.end();
+        Ok(())
+    }
+
+    fn unstyled_to(&mut self, end: TextIndex, src: &str) -> std::io::Result<()> {
+        if self.pos < end {
+            self.buffer
+                .execute(Print(&src[self.pos.as_index()..end.as_index()]))?;
+            self.pos = end;
+        }
         Ok(())
     }
 }
@@ -175,7 +205,6 @@ fn configuration() -> rustyline::Result<Config> {
         .completion_type(CompletionType::List)
         .edit_mode(EditMode::Emacs)
         .bell_style(BellStyle::None)
-        // .color_mode() // TODO read NO_COLOR?
         .build())
 }
 

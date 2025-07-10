@@ -45,7 +45,7 @@ impl Shell {
     }
 
     pub fn start_editor(&self) -> rustyline::Result<LineEditor> {
-        LineEditor::new()
+        LineEditor::new(self.commands.keys().cloned().collect())
     }
 
     pub fn parse_and_execute_input(&mut self, input: &str, h5file: &mut H5File) -> CommandOutcome {
