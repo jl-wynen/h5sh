@@ -25,11 +25,6 @@ impl TextRange {
         self.end
     }
 
-    /// Extend the TextRange to include the space used by the given character.
-    pub fn append(&mut self, c: char) {
-        self.end.offset(TextIndex::from_utf8_len(c));
-    }
-
     /// Extend the TextRange to the given end.
     pub fn extend_to(&mut self, end: TextIndex) {
         if end < self.start {

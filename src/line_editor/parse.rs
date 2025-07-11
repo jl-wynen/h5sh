@@ -107,9 +107,9 @@ impl<'a> Parser<'a> {
             && !self.scanner.is_finished()
             && !terminator(self.scanner.current())
         {
-            self.scanner.eat();
+            self.eat();
         }
-        self.current_range.extend_to(self.scanner.current_index());
+        // self.current_range.extend_to(self.scanner.current_index());
         Ok(StringExpression {
             range: self.current_range,
         })
@@ -136,14 +136,25 @@ impl<'a> Parser<'a> {
     // This function assumes that scanner.current is the first '-' of the arg.
     fn parse_keyword_argument(&mut self) -> Result<Argument> {
         let start = self.scanner.current_index();
-        if self.scanner.eat() == '-' {
-            self.scanner.eat(); // skip over second '-'
-            let mut arg = self.parse_string_with_terminator(|c| c == '=')?;
-            arg.range.extend_backwards_to(start);
-            if self.scanner.current() == '=' {
-                self.scanner.eat(); // skip '=', it has no actual syntactic meaning
+        self.start_token();
+        if self.eat() == '-' {
+            // skip over second '-'
+            if self.eat().is_whitespace() {
+                Ok(Argument::Long(StringExpression {
+                    range: self.current_range,
+                }))
+            } else {
+                let mut arg = self.parse_string_with_terminator(|c| c == '=')?;
+                arg.range.extend_backwards_to(start);
+                if self.scanner.current() == '=' {
+                    self.eat(); // skip '=', it has no actual syntactic meaning
+                }
+                Ok(Argument::Long(arg))
             }
-            Ok(Argument::Long(arg))
+        } else if self.scanner.current().is_whitespace() {
+            Ok(Argument::Short(StringExpression {
+                range: self.current_range,
+            }))
         } else {
             let mut arg = self.parse_string()?;
             arg.range.extend_backwards_to(start);
@@ -151,9 +162,15 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn eat(&mut self) -> char {
+        let res = self.scanner.eat();
+        self.current_range.extend_to(self.scanner.current_index());
+        res
+    }
+
     fn eat_whitespace(&mut self) {
         while self.scanner.current().is_whitespace() {
-            self.scanner.eat();
+            self.eat();
         }
     }
 
@@ -380,6 +397,34 @@ mod tests {
                 }),
             ],
             range: TextRange::from((1, 67)),
+        });
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_command_space_after_dash() {
+        let line = "f - short --  long";
+        let mut parser = Parser::new(line);
+        let parsed = parser.parse().unwrap();
+        let expected = Call(CallExpression {
+            function: StringExpression {
+                range: TextRange::from((0, 1)),
+            },
+            arguments: vec![
+                Argument::Short(StringExpression {
+                    range: TextRange::from((2, 3)), // -
+                }),
+                Argument::Plain(StringExpression {
+                    range: TextRange::from((4, 9)), // short
+                }),
+                Argument::Long(StringExpression {
+                    range: TextRange::from((10, 12)), // --
+                }),
+                Argument::Plain(StringExpression {
+                    range: TextRange::from((14, 18)), // long
+                }),
+            ],
+            range: TextRange::from((0, 18)),
         });
         assert_eq!(parsed, expected);
     }

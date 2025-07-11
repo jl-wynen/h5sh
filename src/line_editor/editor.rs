@@ -105,8 +105,14 @@ impl Highlighter for Hinter {
         }
     }
 
-    fn highlight_char(&self, _line: &str, _pos: usize, kind: CmdKind) -> bool {
-        !matches!(kind, CmdKind::MoveCursor) // TODO optimise
+    fn highlight_char(&self, line: &str, pos: usize, kind: CmdKind) -> bool {
+        // This could be optimized further to not highlight if pos is in a plain
+        // argument or some other string that does not get highlighted. But that would
+        // require parsing the line here or keeping a persistent AST.
+        let line_modified = !matches!(kind, CmdKind::MoveCursor);
+        let inserted_whitespace =
+            !line.is_empty() && pos > 0 && line.as_bytes()[pos - 1].is_ascii_whitespace();
+        line_modified && !inserted_whitespace
     }
 }
 
