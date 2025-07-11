@@ -48,6 +48,11 @@ impl TextRange {
     pub fn is_empty(&self) -> bool {
         self.start == self.end
     }
+
+    /// Return true of the index is within this range.
+    pub fn contains(&self, index: TextIndex) -> bool {
+        self.start <= index && index < self.end
+    }
 }
 
 impl From<(usize, usize)> for TextRange {

@@ -14,6 +14,7 @@ use rustyline::{
 use std::borrow::Cow;
 use std::collections::HashSet;
 
+use super::completion;
 use super::parse::{Argument, Expression, Parser, StringExpression};
 use super::text_index::TextIndex;
 
@@ -79,15 +80,16 @@ struct Hinter {
 }
 
 impl Completer for Hinter {
-    type Candidate = String;
+    type Candidate = completion::Candidate;
 
     fn complete(
         &self,
-        _line: &str,
-        _pos: usize,
+        line: &str,
+        pos: usize,
         _ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
-        Ok((0, vec!["/entry".to_string()]))
+        let expression = Parser::new(line).parse();
+        completion::complete(&expression, pos)
     }
 }
 
