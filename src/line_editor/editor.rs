@@ -93,9 +93,7 @@ impl Completer for Hinter {
 
 impl Highlighter for Hinter {
     fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
-        let Ok(expression) = Parser::new(line).parse() else {
-            return Cow::Borrowed(line);
-        };
+        let expression = Parser::new(line).parse();
 
         if let Ok(highlighted) = InputHighlighter::new(&self.commands).highlight(&expression, line)
         {

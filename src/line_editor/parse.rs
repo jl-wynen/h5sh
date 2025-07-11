@@ -1,14 +1,6 @@
 use super::scanner::Scanner;
 use super::text_range::TextRange;
 
-#[derive(Clone, Debug)]
-pub(super) struct ParseError {
-    what: &'static str,
-    range: TextRange,
-}
-
-pub(super) type Result<T> = std::result::Result<T, ParseError>;
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum Expression {
     Call(CallExpression),
@@ -59,26 +51,26 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub(super) fn parse(&mut self) -> Result<Expression> {
+    pub(super) fn parse(&mut self) -> Expression {
         self.parse_expression()
     }
 
-    fn parse_expression(&mut self) -> Result<Expression> {
-        let Some(call) = self.maybe_parse_call_expression()? else {
-            return Ok(Expression::Noop);
+    fn parse_expression(&mut self) -> Expression {
+        let Some(call) = self.maybe_parse_call_expression() else {
+            return Expression::Noop;
         };
-        Ok(Expression::Call(call))
+        Expression::Call(call)
     }
 
-    fn maybe_parse_call_expression(&mut self) -> Result<Option<CallExpression>> {
-        let function = self.parse_string()?;
+    fn maybe_parse_call_expression(&mut self) -> Option<CallExpression> {
+        let function = self.parse_string();
         if function.range.is_empty() {
-            return Ok(None);
+            return None;
         }
         let mut call_range = function.range;
 
         let mut arguments = Vec::new();
-        while let Some(arg) = self.maybe_parse_argument()? {
+        while let Some(arg) = self.maybe_parse_argument() {
             arguments.push(arg);
         }
         if let Some(arg) = arguments.last() {
@@ -90,17 +82,17 @@ impl<'a> Parser<'a> {
             arguments,
             range: call_range,
         };
-        Ok(Some(call))
+        Some(call)
     }
 
-    fn parse_string(&mut self) -> Result<StringExpression> {
+    fn parse_string(&mut self) -> StringExpression {
         self.parse_string_with_terminator(|_| false)
     }
 
     fn parse_string_with_terminator<T: Fn(char) -> bool>(
         &mut self,
         terminator: T,
-    ) -> Result<StringExpression> {
+    ) -> StringExpression {
         self.eat_whitespace();
         self.start_token();
         while !self.scanner.current().is_whitespace()
@@ -110,55 +102,55 @@ impl<'a> Parser<'a> {
             self.eat();
         }
         // self.current_range.extend_to(self.scanner.current_index());
-        Ok(StringExpression {
+        StringExpression {
             range: self.current_range,
-        })
+        }
     }
 
-    fn maybe_parse_argument(&mut self) -> Result<Option<Argument>> {
+    fn maybe_parse_argument(&mut self) -> Option<Argument> {
         self.eat_whitespace();
         if self.scanner.current() == '-' {
-            Ok(Some(self.parse_keyword_argument()?))
+            Some(self.parse_keyword_argument())
         } else {
             self.parse_plain_argument()
         }
     }
 
-    fn parse_plain_argument(&mut self) -> Result<Option<Argument>> {
-        let arg = self.parse_string()?;
+    fn parse_plain_argument(&mut self) -> Option<Argument> {
+        let arg = self.parse_string();
         if arg.range.is_empty() {
-            Ok(None)
+            None
         } else {
-            Ok(Some(Argument::Plain(arg)))
+            Some(Argument::Plain(arg))
         }
     }
 
     // This function assumes that scanner.current is the first '-' of the arg.
-    fn parse_keyword_argument(&mut self) -> Result<Argument> {
+    fn parse_keyword_argument(&mut self) -> Argument {
         let start = self.scanner.current_index();
         self.start_token();
         if self.eat() == '-' {
             // skip over second '-'
             if self.eat().is_whitespace() {
-                Ok(Argument::Long(StringExpression {
+                Argument::Long(StringExpression {
                     range: self.current_range,
-                }))
+                })
             } else {
-                let mut arg = self.parse_string_with_terminator(|c| c == '=')?;
+                let mut arg = self.parse_string_with_terminator(|c| c == '=');
                 arg.range.extend_backwards_to(start);
                 if self.scanner.current() == '=' {
                     self.eat(); // skip '=', it has no actual syntactic meaning
                 }
-                Ok(Argument::Long(arg))
+                Argument::Long(arg)
             }
         } else if self.scanner.current().is_whitespace() {
-            Ok(Argument::Short(StringExpression {
+            Argument::Short(StringExpression {
                 range: self.current_range,
-            }))
+            })
         } else {
-            let mut arg = self.parse_string()?;
+            let mut arg = self.parse_string();
             arg.range.extend_backwards_to(start);
-            Ok(Argument::Short(arg))
+            Argument::Short(arg)
         }
     }
 
@@ -188,7 +180,7 @@ mod tests {
     fn parse_empty_line() {
         let line = "";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Expression::Noop;
         assert_eq!(parsed, expected);
     }
@@ -197,7 +189,7 @@ mod tests {
     fn parse_empty_with_only_one_spaces() {
         let line = " ";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Expression::Noop;
         assert_eq!(parsed, expected);
     }
@@ -206,7 +198,7 @@ mod tests {
     fn parse_empty_with_only_spaces() {
         let line = " \t";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Expression::Noop;
         assert_eq!(parsed, expected);
     }
@@ -215,7 +207,7 @@ mod tests {
     fn parse_command_no_args() {
         let line = "command";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 7)),
@@ -230,7 +222,7 @@ mod tests {
     fn parse_command_no_args_single_char() {
         let line = "l";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 1)),
@@ -245,7 +237,7 @@ mod tests {
     fn parse_command_no_args_padding_front() {
         let line = " pwd";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((1, 4)),
@@ -260,7 +252,7 @@ mod tests {
     fn parse_command_no_args_padding_back() {
         let line = "cd  ";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 2)),
@@ -275,7 +267,7 @@ mod tests {
     fn parse_command_args_plain() {
         let line = "cd /path";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 2)),
@@ -292,7 +284,7 @@ mod tests {
     fn parse_command_args_plain_single_char() {
         let line = "cd .";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 2)),
@@ -309,7 +301,7 @@ mod tests {
     fn parse_command_args_plain_plain() {
         let line = "foo /path  other.*";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 3)),
@@ -331,7 +323,7 @@ mod tests {
     fn parse_command_args_short() {
         let line = "ls -l";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 2)),
@@ -348,7 +340,7 @@ mod tests {
     fn parse_command_args_long() {
         let line = "ls --list";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 2)),
@@ -365,7 +357,7 @@ mod tests {
     fn parse_command_args_many() {
         let line = " function\targ1 -l short --long=value   --other-long\t /more/stuff -x  ";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((1, 9)), // function
@@ -405,7 +397,7 @@ mod tests {
     fn parse_command_space_after_dash() {
         let line = "f - short --  long";
         let mut parser = Parser::new(line);
-        let parsed = parser.parse().unwrap();
+        let parsed = parser.parse();
         let expected = Call(CallExpression {
             function: StringExpression {
                 range: TextRange::from((0, 1)),
