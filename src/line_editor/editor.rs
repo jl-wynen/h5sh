@@ -89,7 +89,7 @@ impl Completer for Hinter {
         _ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let expression = Parser::new(line).parse();
-        completion::complete(&expression, pos)
+        completion::complete(&expression, line, pos, &self.commands)
     }
 }
 

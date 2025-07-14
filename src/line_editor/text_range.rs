@@ -50,8 +50,8 @@ impl TextRange {
     }
 
     /// Return true of the index is within this range.
-    pub fn contains(&self, index: TextIndex) -> bool {
-        self.start <= index && index < self.end
+    pub fn contains_or_end(&self, index: TextIndex) -> bool {
+        self.start <= index && index <= self.end
     }
 }
 
