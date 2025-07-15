@@ -36,7 +36,7 @@ fn main() -> ExitCode {
             Poll::Cmd(input) => match shell.parse_and_execute_input(&input, &h5file) {
                 CommandOutcome::KeepRunning => {}
                 CommandOutcome::ChangeWorkingGroup(new_working_group) => {
-                    shell.set_working_dir(new_working_group.clone());
+                    shell.set_working_group(new_working_group.clone());
                     editor.set_working_group(new_working_group);
                 }
                 CommandOutcome::ExitFailure => {

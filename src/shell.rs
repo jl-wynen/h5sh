@@ -5,7 +5,7 @@ use crate::output::Printer;
 use std::rc::Rc;
 
 pub struct Shell {
-    working_dir: H5Path,
+    working_group: H5Path,
     printer: Printer,
     commands: cmd::CommandMap,
 }
@@ -13,7 +13,7 @@ pub struct Shell {
 impl Shell {
     pub fn new() -> Self {
         Self {
-            working_dir: H5Path::root(),
+            working_group: H5Path::root(),
             printer: Printer::new(),
             commands: cmd::commands(),
         }
@@ -31,16 +31,16 @@ impl Shell {
         self.commands.get(name).cloned()
     }
 
-    pub fn get_working_dir(&self) -> &H5Path {
-        &self.working_dir
+    pub fn get_working_group(&self) -> &H5Path {
+        &self.working_group
     }
 
-    pub fn set_working_dir(&mut self, path: H5Path) {
-        self.working_dir = path;
+    pub fn set_working_group(&mut self, path: H5Path) {
+        self.working_group = path;
     }
 
     pub fn resolve_path(&self, path: &H5Path) -> H5Path {
-        self.working_dir.join(path).resolve()
+        self.working_group.join(path).resolve()
     }
 
     pub fn start_editor<'f>(&self, file: &'f H5File) -> rustyline::Result<LineEditor<'f>> {

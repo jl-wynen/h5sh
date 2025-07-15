@@ -11,7 +11,7 @@ impl Command for Pwd {
     fn run(&self, _args: ArgMatches, shell: &Shell, _file: &H5File) -> CmdResult {
         shell
             .printer()
-            .println(format!("{}", shell.get_working_dir()));
+            .println(format!("{}", shell.get_working_group()));
         Ok(CommandOutcome::KeepRunning)
     }
 
