@@ -8,7 +8,7 @@ use crate::shell::Shell;
 pub struct Pwd;
 
 impl Command for Pwd {
-    fn run(&self, _args: ArgMatches, shell: &mut Shell, _file: &mut H5File) -> CmdResult {
+    fn run(&self, _args: ArgMatches, shell: &mut Shell, _file: &H5File) -> CmdResult {
         shell
             .printer()
             .println(format!("{}", shell.get_working_dir()));

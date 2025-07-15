@@ -7,7 +7,7 @@ use crate::h5::{H5Error, H5File};
 use crate::shell::Shell;
 
 pub trait Command {
-    fn run(&self, args: clap::ArgMatches, shell: &mut Shell, file: &mut H5File) -> CmdResult;
+    fn run(&self, args: clap::ArgMatches, shell: &mut Shell, file: &H5File) -> CmdResult;
 
     fn arg_parser(&self) -> clap::Command;
 }

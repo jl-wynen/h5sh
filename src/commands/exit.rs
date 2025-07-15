@@ -8,7 +8,7 @@ use crate::shell::Shell;
 pub struct Exit;
 
 impl Command for Exit {
-    fn run(&self, _: ArgMatches, _: &mut Shell, _: &mut H5File) -> CmdResult {
+    fn run(&self, _: ArgMatches, _: &mut Shell, _: &H5File) -> CmdResult {
         Err(CommandError::Exit)
     }
 

@@ -71,7 +71,7 @@ impl Shell {
         &mut self,
         cmd: Rc<dyn Command>,
         args: &str,
-        h5file: &mut H5File,
+        h5file: &H5File,
     ) -> cmd::CmdResult {
         match cmd
             .arg_parser()

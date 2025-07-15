@@ -13,7 +13,7 @@ use crate::shell::Shell;
 pub struct Help;
 
 impl Command for Help {
-    fn run(&self, _args: ArgMatches, shell: &mut Shell, _file: &mut H5File) -> CmdResult {
+    fn run(&self, _args: ArgMatches, shell: &mut Shell, _file: &H5File) -> CmdResult {
         let mut descriptions: Vec<_> = shell
             .commands()
             .iter()

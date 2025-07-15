@@ -20,7 +20,7 @@ use crate::shell::Shell;
 pub struct Ls;
 
 impl Command for Ls {
-    fn run(&self, args: ArgMatches, shell: &mut Shell, file: &mut H5File) -> CmdResult {
+    fn run(&self, args: ArgMatches, shell: &mut Shell, file: &H5File) -> CmdResult {
         let Ok(args) = Arguments::from_arg_matches(&args) else {
             return Err(CommandError::Critical("Failed to extract args".to_string()));
         };
