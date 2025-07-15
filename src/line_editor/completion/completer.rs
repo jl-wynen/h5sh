@@ -164,7 +164,7 @@ mod tests {
 
     fn child_loader() -> impl Fn(&i32) -> h5::Result<Vec<(H5Path, i32, bool)>> {
         let entries = HashMap::from([(
-            -1, // /entry"
+            2, // /entry
             vec![(H5Path::from("/entry/path"), 10, false)],
         )]);
         move |value| match entries.get(value) {

@@ -1,7 +1,6 @@
 use std::str::Chars;
 
 use super::text_index::TextIndex;
-use super::text_range::TextRange;
 
 #[derive(Debug)]
 pub(super) struct Scanner<'a> {
@@ -9,7 +8,6 @@ pub(super) struct Scanner<'a> {
     /// The byte index of the start of the current char.
     current_index: TextIndex,
     chars: Chars<'a>,
-    src: &'a str,
 }
 
 impl<'a> Scanner<'a> {
@@ -20,7 +18,6 @@ impl<'a> Scanner<'a> {
             current,
             current_index: TextIndex::default(),
             chars,
-            src,
         }
     }
 

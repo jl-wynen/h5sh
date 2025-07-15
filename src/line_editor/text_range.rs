@@ -38,12 +38,6 @@ impl TextRange {
         self.start = start;
     }
 
-    /// Move the start n bytes.
-    pub fn skip_n(&mut self, n: usize) {
-        self.start.offset(TextIndex::from(n));
-        self.end = self.end.max(self.start);
-    }
-
     /// Return true if the range contains no elements.
     pub fn is_empty(&self) -> bool {
         self.start == self.end

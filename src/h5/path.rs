@@ -53,19 +53,6 @@ impl H5Path {
         )
     }
 
-    pub fn split_parent(&self) -> (Self, &str) {
-        self.raw.rsplit_once('/').map_or_else(
-            || (Self::from(""), self.as_raw()),
-            |(parent, name)| {
-                if parent.is_empty() && self.is_absolute() {
-                    (Self::root(), name)
-                } else {
-                    (Self::from(parent.to_string()), name)
-                }
-            },
-        )
-    }
-
     pub fn segments(&self) -> impl Iterator<Item = &str> {
         self.raw.split('/').filter(|s| !s.is_empty())
     }

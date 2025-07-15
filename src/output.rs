@@ -63,7 +63,6 @@ impl Printer {
                     Print("\n"),
                 );
             }
-            CommandError::Exit => {}
         }
         let _ = stderr.flush();
     }

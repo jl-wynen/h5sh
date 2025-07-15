@@ -60,7 +60,6 @@ impl Shell {
                 self.printer().print_cmd_error(&err);
                 match err {
                     CommandError::Critical(_) => CommandOutcome::ExitFailure,
-                    CommandError::Exit => CommandOutcome::ExitSuccess,
                     _ => CommandOutcome::KeepRunning,
                 }
             }

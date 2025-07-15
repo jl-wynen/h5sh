@@ -1,5 +1,5 @@
 use crate::h5::{
-    self, CacheEntry, CacheEntryId, CacheValue, FileCache, H5Path,
+    self, CacheEntry, CacheEntryId, FileCache, H5Path,
     cache::{Group, Leaf},
 };
 use smallvec::SmallVec;

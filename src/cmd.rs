@@ -44,8 +44,6 @@ pub enum CommandError {
     NoMessage,
     /// The command failed and recovery is not reliably possible.
     Critical(String),
-    /// Not really an error, the command wants the shell to exit.
-    Exit,
 }
 
 pub type CmdResult = Result<CommandOutcome, CommandError>;
@@ -56,7 +54,6 @@ impl Display for CommandError {
             CommandError::Error(msg) => f.write_str(msg),
             CommandError::NoMessage => Ok(()),
             CommandError::Critical(msg) => f.write_str(msg),
-            CommandError::Exit => Ok(()),
         }
     }
 }

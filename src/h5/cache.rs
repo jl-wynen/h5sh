@@ -23,6 +23,7 @@ pub enum CacheEntry<Value> {
         children: Option<SmallVec<CacheEntryId, 4>>,
     },
     Leaf {
+        #[allow(dead_code)]
         value: Value,
     },
 }
@@ -52,6 +53,7 @@ impl<Value> FileCache<Value> {
         key.get_cache_entry_mut(&mut self.objects)
     }
 
+    #[cfg(test)] // currently only used in tests
     pub fn get_with_id(&self, key: &H5Path) -> Option<(CacheEntryId, &CacheEntry<Value>)> {
         self.objects
             .get_full(key)
@@ -60,10 +62,6 @@ impl<Value> FileCache<Value> {
 
     pub fn get_key(&self, id: CacheEntryId) -> Option<&H5Path> {
         self.objects.get_index(id.0).map(|(key, _)| key)
-    }
-
-    pub fn get_with_key(&self, id: CacheEntryId) -> Option<(&H5Path, &CacheEntry<Value>)> {
-        self.objects.get_index(id.0)
     }
 
     pub fn insert_group(&mut self, path: &H5Path, value: Value) -> CacheEntryId {
@@ -120,22 +118,12 @@ impl H5FileCache {
 }
 
 impl<Value> CacheEntry<Value> {
+    #[cfg(test)] // currently only used in tests
     pub fn value(&self) -> &Value {
         match self {
             Group { value, .. } => value,
             Leaf { value } => value,
         }
-    }
-
-    pub fn value_mut(&mut self) -> &mut Value {
-        match self {
-            Group { value, .. } => value,
-            Leaf { value } => value,
-        }
-    }
-
-    pub fn is_group(&self) -> bool {
-        matches!(self, Group { .. })
     }
 
     pub fn is_leaf(&self) -> bool {
@@ -232,10 +220,6 @@ impl CacheValue {
         Ok(Self {
             location_info: object.location_info()?,
         })
-    }
-
-    pub fn from_location_info(location_info: hdf5::LocationInfo) -> Self {
-        Self { location_info }
     }
 
     pub fn location_token(&self) -> &hdf5::LocationToken {

@@ -4,6 +4,7 @@ use super::text_range::TextRange;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum Expression {
     Call(CallExpression),
+    #[allow(dead_code)] // exists for future use
     String(StringExpression),
     Noop,
 }
