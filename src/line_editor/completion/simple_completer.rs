@@ -2,20 +2,20 @@ use crate::h5::{
     self, CacheEntry, CacheEntryId, FileCache, H5Path,
     cache::{Group, Leaf},
 };
-use smallvec::{SmallVec, smallvec};
+use smallvec::SmallVec;
 
 pub(super) fn path_completions<Value, LoadChildren, Children>(
     cache: &mut FileCache<Value>,
     current: &H5Path,
     load_children: LoadChildren,
-) -> SmallVec<H5Path, 4>
+) -> Vec<H5Path>
 where
     LoadChildren: Fn(&H5Path) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, Value, bool)>,
 {
     if let Some(entry) = cache.get(current) {
         if entry.is_leaf() || !current.as_raw().ends_with('/') {
-            return smallvec![finalize_entry_path(current.as_raw(), entry)];
+            return vec![finalize_entry_path(current.as_raw(), entry)];
         }
     }
 
@@ -23,7 +23,7 @@ where
     if let Some(candidates) = get_all_children(&parent, cache, load_children) {
         complete_from_children(candidates, current.as_raw())
     } else {
-        smallvec![]
+        Vec::new()
     }
 }
 
@@ -49,8 +49,8 @@ where
     LoadChildren: Fn(&H5Path) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, Value, bool)>,
 {
-    // The children might already be loaded, if so, bypass the (somewhat) search and
-    // load mechanism.
+    // The children might already be loaded, if so, bypass the (somewhat) expensive
+    // search and load mechanism.
     if !matches!(
         cache.get(path),
         Some(Group {
@@ -126,11 +126,6 @@ where
 {
     // Only load and insert children if they have not already been loaded.
     if let Some(Group { children: None, .. }) = cache.get(path) {
-        let c = load_children(path)
-            .unwrap()
-            .into_iter()
-            .map(|(path, value, is_group)| (path, is_group))
-            .collect::<Vec<_>>();
         let _ = cache.insert_children(path.clone(), load_children(path)?);
     }
     Ok(())
@@ -139,7 +134,7 @@ where
 fn complete_from_children<'a>(
     children: impl Iterator<Item = &'a H5Path>,
     name: &str,
-) -> SmallVec<H5Path, 4> {
+) -> Vec<H5Path> {
     children
         .filter(|candidate| candidate.as_raw().starts_with(name))
         .cloned()

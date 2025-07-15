@@ -26,7 +26,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let Ok(mut editor) = shell.start_editor() else {
+    let Ok(mut editor) = shell.start_editor(&h5file) else {
         shell.printer().print_shell_error("Failed to start editor");
         return ExitCode::FAILURE;
     };

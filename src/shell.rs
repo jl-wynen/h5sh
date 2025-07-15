@@ -44,11 +44,11 @@ impl Shell {
         self.working_dir.join(path).resolve()
     }
 
-    pub fn start_editor(&self) -> rustyline::Result<LineEditor> {
-        LineEditor::new(self.commands.keys().cloned().collect())
+    pub fn start_editor<'f>(&self, file: &'f H5File) -> rustyline::Result<LineEditor<'f>> {
+        LineEditor::new(self.commands.keys().cloned().collect(), file)
     }
 
-    pub fn parse_and_execute_input(&mut self, input: &str, h5file: &mut H5File) -> CommandOutcome {
+    pub fn parse_and_execute_input(&mut self, input: &str, h5file: &H5File) -> CommandOutcome {
         let (cmd, args) = split_cmd(input);
         let Some(cmd) = self.get_command(cmd) else {
             self.printer()

@@ -1,6 +1,6 @@
 use crossterm::{
     ExecutableCommand,
-    style::{Attribute, Color, Print, PrintStyledContent, Stylize, style},
+    style::{Attribute, Color, Print, PrintStyledContent, Stylize},
 };
 use log::info;
 use rustyline::{
@@ -12,22 +12,25 @@ use rustyline::{
     history::DefaultHistory,
 };
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::ops::DerefMut;
 
 use super::completion;
 use super::parse::{Argument, Expression, Parser, StringExpression};
 use super::text_index::TextIndex;
+use crate::h5::{FileCache, H5File, H5Path};
 
-type UnderlyingEditor = rustyline::Editor<Hinter, DefaultHistory>;
+type UnderlyingEditor<'f> = rustyline::Editor<Hinter<'f>, DefaultHistory>;
 
-pub struct LineEditor {
-    editor: UnderlyingEditor,
+pub struct LineEditor<'f> {
+    editor: UnderlyingEditor<'f>,
 }
 
-impl LineEditor {
-    pub fn new(commands: HashSet<String>) -> rustyline::Result<Self> {
+impl<'f> LineEditor<'f> {
+    pub fn new(commands: HashSet<String>, file: &'f H5File) -> rustyline::Result<Self> {
         let mut editor = UnderlyingEditor::with_config(configuration()?)?;
-        editor.set_helper(Some(Hinter { commands }));
+        editor.set_helper(Some(Hinter::new(commands, file)));
         if editor.load_history(&history_path()).is_err() {
             info!("No previous history.");
         }
@@ -75,11 +78,23 @@ pub enum Poll {
 }
 
 #[derive(Helper, Hinter, Validator)]
-struct Hinter {
+struct Hinter<'f> {
     commands: HashSet<String>,
+    file: &'f H5File,
+    file_cache: RefCell<FileCache<H5Path>>,
 }
 
-impl Completer for Hinter {
+impl<'f> Hinter<'f> {
+    fn new(commands: HashSet<String>, file: &'f H5File) -> Self {
+        Self {
+            commands,
+            file,
+            file_cache: FileCache::new().into(),
+        }
+    }
+}
+
+impl<'f> Completer for Hinter<'f> {
     type Candidate = completion::Candidate;
 
     fn complete(
@@ -89,11 +104,23 @@ impl Completer for Hinter {
         _ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let expression = Parser::new(line).parse();
-        completion::complete(&expression, line, pos, &self.commands)
+
+        let mut file_cache = self.file_cache.borrow_mut();
+        let child_loader = |path: &H5Path| Ok(vec![(H5Path::root(), H5Path::root(), true)]);
+
+        completion::complete(
+            &expression,
+            line,
+            pos,
+            &self.commands,
+            file_cache.deref_mut(),
+            &H5Path::root(), // TODO
+            child_loader,
+        )
     }
 }
 
-impl Highlighter for Hinter {
+impl<'f> Highlighter for Hinter<'f> {
     fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
         let expression = Parser::new(line).parse();
 

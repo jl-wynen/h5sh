@@ -29,6 +29,12 @@ pub enum CacheEntry<Value> {
 pub use CacheEntry::{Group, Leaf};
 
 impl<Value> FileCache<Value> {
+    pub fn new() -> Self {
+        Self {
+            objects: IndexMap::with_capacity(16),
+        }
+    }
+
     pub fn contains_key(&self, key: &H5Path) -> bool {
         self.objects.contains_key(key)
     }
