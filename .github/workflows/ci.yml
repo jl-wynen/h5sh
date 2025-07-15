@@ -50,7 +50,6 @@ jobs:
           - { os: ubuntu-24.04 }
           - { os: ubuntu-24.04-arm }
           - { os: macos-15 }
-          - { os: macos-15-large }
           - { os: windows-2025 }
     env:
       RUSTFLAGS: -D warnings
