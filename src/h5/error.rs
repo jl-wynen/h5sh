@@ -12,8 +12,8 @@ pub type Result<T> = std::result::Result<T, H5Error>;
 impl Display for H5Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            H5Error::NotFound(name) => write!(f, "Not found: '{}'", name),
-            H5Error::Other(msg) => write!(f, "HDF5 error: '{}'", msg),
+            H5Error::NotFound(name) => write!(f, "Not found: '{name}'"),
+            H5Error::Other(msg) => write!(f, "HDF5 error: '{msg}'"),
         }
     }
 }

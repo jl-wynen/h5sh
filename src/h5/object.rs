@@ -77,8 +77,7 @@ impl H5Object {
             })),
             Ok(_) => Err(H5Error::Other("Unsupported location type".to_string())),
             Err(e) => Err(H5Error::Other(format!(
-                "Unable to determine location type: {}",
-                e.to_string()
+                "Unable to determine location type: {e}"
             ))),
         }
     }

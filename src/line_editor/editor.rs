@@ -34,7 +34,7 @@ impl<'f> LineEditor<'f> {
         let hinter = match Hinter::new(commands, file) {
             Ok(hinter) => hinter,
             Err(err) => {
-                error!("Failed to create hinter: {}", err);
+                error!("Failed to create hinter: {err}");
                 return Err(ReadlineError::Interrupted);
             }
         };

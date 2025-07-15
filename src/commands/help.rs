@@ -67,7 +67,7 @@ fn print_command_help<Q: QueueableCommand>(
 ) -> std::io::Result<()> {
     queue
         .queue(SetForegroundColor(Color::White))?
-        .queue(Print(format!("{name:length$}", length = name_length)))?
+        .queue(Print(format!("{name:name_length$}")))?
         .queue(ResetColor)?
         .queue(Print("  "))?
         .queue(Print(description))?

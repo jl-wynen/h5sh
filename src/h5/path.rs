@@ -78,7 +78,7 @@ impl H5Path {
         }
         let mut new = segments.join("/");
         if self.is_absolute() {
-            new = format!("/{}", new);
+            new = format!("/{new}");
         }
         Self { raw: new }
     }
