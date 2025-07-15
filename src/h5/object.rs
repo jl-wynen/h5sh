@@ -36,6 +36,10 @@ impl H5Dataset {
     pub fn path(&self) -> &H5Path {
         &self.path
     }
+
+    pub fn location_info(&self) -> hdf5::Result<hdf5::LocationInfo> {
+        self.underlying().loc_info()
+    }
 }
 
 impl H5Group {
@@ -52,6 +56,10 @@ impl H5Group {
 
     pub fn path(&self) -> &H5Path {
         &self.path
+    }
+
+    pub fn location_info(&self) -> hdf5::Result<hdf5::LocationInfo> {
+        self.underlying().loc_info()
     }
 }
 
@@ -79,6 +87,13 @@ impl H5Object {
         match self {
             H5Object::Dataset(dataset) => dataset.path(),
             H5Object::Group(group) => group.path(),
+        }
+    }
+
+    pub fn location_info(&self) -> hdf5::Result<hdf5::LocationInfo> {
+        match self {
+            H5Object::Dataset(dataset) => dataset.location_info(),
+            H5Object::Group(group) => group.location_info(),
         }
     }
 }

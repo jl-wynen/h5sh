@@ -11,7 +11,7 @@ use crossterm::{
 use std::fmt::{Display, Formatter};
 use std::io::{Write, stdout};
 
-use crate::cmd::{CmdResult, Command, CommandError};
+use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
 use crate::h5::{H5Dataset, H5File, H5Object, H5Path};
 use crate::output::Printer;
 use crate::shell::Shell;
@@ -20,7 +20,7 @@ use crate::shell::Shell;
 pub struct Ls;
 
 impl Command for Ls {
-    fn run(&self, args: ArgMatches, shell: &mut Shell, file: &H5File) -> CmdResult {
+    fn run(&self, args: ArgMatches, shell: &Shell, file: &H5File) -> CmdResult {
         let Ok(args) = Arguments::from_arg_matches(&args) else {
             return Err(CommandError::Critical("Failed to extract args".to_string()));
         };
@@ -35,7 +35,7 @@ impl Command for Ls {
                 print_objects(std::iter::once(dataset), shell.printer(), options);
             }
         }
-        Ok(())
+        Ok(CommandOutcome::KeepRunning)
     }
 
     fn arg_parser(&self) -> clap::Command {

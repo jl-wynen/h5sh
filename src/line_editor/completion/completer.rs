@@ -41,7 +41,7 @@ pub fn complete<CacheValue, Children, LoadChildren>(
     load_children: LoadChildren,
 ) -> rustyline::Result<(usize, Vec<Candidate>)>
 where
-    LoadChildren: Fn(&H5Path) -> h5::Result<Children>,
+    LoadChildren: Fn(&CacheValue) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, CacheValue, bool)>,
 {
     let pos = TextIndex::from(pos);
@@ -71,7 +71,7 @@ fn path_completions<CacheValue, Children, LoadChildren>(
     load_children: LoadChildren,
 ) -> Vec<Candidate>
 where
-    LoadChildren: Fn(&H5Path) -> h5::Result<Children>,
+    LoadChildren: Fn(&CacheValue) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, CacheValue, bool)>,
 {
     use super::simple_completer::path_completions;
@@ -158,18 +158,18 @@ mod tests {
     use pretty_assertions::assert_eq;
     use std::collections::HashMap;
 
-    fn failing_load_children(_path: &H5Path) -> h5::Result<Vec<(H5Path, i32, bool)>> {
+    fn failing_load_children(_value: &i32) -> h5::Result<Vec<(H5Path, i32, bool)>> {
         panic!("Do not load children!");
     }
 
-    fn child_loader() -> impl Fn(&H5Path) -> h5::Result<Vec<(H5Path, i32, bool)>> {
+    fn child_loader() -> impl Fn(&i32) -> h5::Result<Vec<(H5Path, i32, bool)>> {
         let entries = HashMap::from([(
-            H5Path::from("/entry"),
+            -1, // /entry"
             vec![(H5Path::from("/entry/path"), 10, false)],
         )]);
-        move |path| match entries.get(&path.normalized()) {
+        move |value| match entries.get(value) {
             Some(children) => Ok(children.clone()),
-            None => Err(h5::H5Error::NotFound(path.clone())),
+            None => Err(h5::H5Error::NotFound(format!("{value}").into())),
         }
     }
 
@@ -280,13 +280,9 @@ mod tests {
         let mut cache = FileCache::new();
         cache.insert_group(&H5Path::from("/"), -1);
 
-        fn load_children(path: &H5Path) -> h5::Result<Vec<(H5Path, i32, bool)>> {
-            let entries =
-                HashMap::from([(H5Path::from("/"), vec![(H5Path::from("/path"), 1, false)])]);
-            match entries.get(&path.normalized()) {
-                Some(children) => Ok(children.clone()),
-                None => Err(h5::H5Error::NotFound(path.clone())),
-            }
+        fn load_children(value: &i32) -> h5::Result<Vec<(H5Path, i32, bool)>> {
+            let entries = HashMap::from([(-1, vec![(H5Path::from("/path"), 1, false)])]);
+            Ok(entries[value].clone())
         }
 
         let (insertion, completions) = complete(

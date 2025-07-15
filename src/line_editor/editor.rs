@@ -1,8 +1,13 @@
+use super::completion;
+use super::parse::{Argument, Expression, Parser, StringExpression};
+use super::text_index::TextIndex;
+use crate::h5::{self, CacheValue, H5Error, H5File, H5FileCache, H5Object, H5Path};
+
 use crossterm::{
     ExecutableCommand,
     style::{Attribute, Color, Print, PrintStyledContent, Stylize},
 };
-use log::info;
+use log::{error, info};
 use rustyline::{
     CompletionType, Context, Helper, Hinter, Validator,
     completion::Completer,
@@ -16,11 +21,6 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::DerefMut;
 
-use super::completion;
-use super::parse::{Argument, Expression, Parser, StringExpression};
-use super::text_index::TextIndex;
-use crate::h5::{FileCache, H5File, H5Path};
-
 type UnderlyingEditor<'f> = rustyline::Editor<Hinter<'f>, DefaultHistory>;
 
 pub struct LineEditor<'f> {
@@ -30,7 +30,16 @@ pub struct LineEditor<'f> {
 impl<'f> LineEditor<'f> {
     pub fn new(commands: HashSet<String>, file: &'f H5File) -> rustyline::Result<Self> {
         let mut editor = UnderlyingEditor::with_config(configuration()?)?;
-        editor.set_helper(Some(Hinter::new(commands, file)));
+
+        let hinter = match Hinter::new(commands, file) {
+            Ok(hinter) => hinter,
+            Err(err) => {
+                error!("Failed to create hinter: {}", err);
+                return Err(ReadlineError::Interrupted);
+            }
+        };
+        editor.set_helper(Some(hinter));
+
         if editor.load_history(&history_path()).is_err() {
             info!("No previous history.");
         }
@@ -64,6 +73,12 @@ impl<'f> LineEditor<'f> {
         self.editor.save_history(&path)
     }
 
+    pub fn set_working_group(&mut self, group: H5Path) {
+        if let Some(helper) = self.editor.helper_mut() {
+            helper.working_group = group;
+        }
+    }
+
     fn add_history_entry<S: AsRef<str> + Into<String>>(&mut self, entry: S) {
         let _ = self.editor.add_history_entry(entry);
     }
@@ -81,16 +96,18 @@ pub enum Poll {
 struct Hinter<'f> {
     commands: HashSet<String>,
     file: &'f H5File,
-    file_cache: RefCell<FileCache<H5Path>>,
+    file_cache: RefCell<H5FileCache>,
+    working_group: H5Path,
 }
 
 impl<'f> Hinter<'f> {
-    fn new(commands: HashSet<String>, file: &'f H5File) -> Self {
-        Self {
+    fn new(commands: HashSet<String>, file: &'f H5File) -> h5::Result<Self> {
+        Ok(Self {
             commands,
             file,
-            file_cache: FileCache::new().into(),
-        }
+            file_cache: H5FileCache::with_root(file)?.into(),
+            working_group: H5Path::root(),
+        })
     }
 }
 
@@ -105,8 +122,21 @@ impl<'f> Completer for Hinter<'f> {
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let expression = Parser::new(line).parse();
 
+        let child_loader = move |parent: &CacheValue| match self
+            .file
+            .load(*parent.location_token())?
+        {
+            H5Object::Group(group) => Ok(self.file.load_children(group)?.filter_map(|object| {
+                Some((
+                    object.path().clone(),
+                    CacheValue::from_h5object(&object).ok()?,
+                    matches!(object, H5Object::Group(_)),
+                ))
+            })),
+            H5Object::Dataset(_) => Err(H5Error::Other("Not a group".into())),
+        };
+
         let mut file_cache = self.file_cache.borrow_mut();
-        let child_loader = |path: &H5Path| Ok(vec![(H5Path::root(), H5Path::root(), true)]);
 
         completion::complete(
             &expression,
@@ -114,7 +144,7 @@ impl<'f> Completer for Hinter<'f> {
             pos,
             &self.commands,
             file_cache.deref_mut(),
-            &H5Path::root(), // TODO
+            &self.working_group,
             child_loader,
         )
     }

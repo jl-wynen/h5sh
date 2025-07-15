@@ -1,6 +1,6 @@
 use clap::{ArgMatches, CommandFactory, Parser};
 
-use crate::cmd::{CmdResult, Command};
+use crate::cmd::{CmdResult, Command, CommandOutcome};
 use crate::h5::H5File;
 use crate::shell::Shell;
 
@@ -8,11 +8,11 @@ use crate::shell::Shell;
 pub struct Pwd;
 
 impl Command for Pwd {
-    fn run(&self, _args: ArgMatches, shell: &mut Shell, _file: &H5File) -> CmdResult {
+    fn run(&self, _args: ArgMatches, shell: &Shell, _file: &H5File) -> CmdResult {
         shell
             .printer()
             .println(format!("{}", shell.get_working_dir()));
-        Ok(())
+        Ok(CommandOutcome::KeepRunning)
     }
 
     fn arg_parser(&self) -> clap::Command {

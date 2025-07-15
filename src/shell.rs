@@ -1,9 +1,8 @@
-use std::rc::Rc;
-
 use crate::cmd::{self, Command, CommandError, CommandOutcome};
 use crate::h5::{H5File, H5Path};
 use crate::line_editor::LineEditor;
 use crate::output::Printer;
+use std::rc::Rc;
 
 pub struct Shell {
     working_dir: H5Path,
@@ -55,15 +54,16 @@ impl Shell {
                 .print_shell_error(format!("Unknown command: {cmd}"));
             return CommandOutcome::KeepRunning;
         };
-        if let Err(err) = self.parse_and_run_command(cmd, args, h5file) {
-            self.printer().print_cmd_error(&err);
-            match err {
-                CommandError::Critical(_) => CommandOutcome::ExitFailure,
-                CommandError::Exit => CommandOutcome::ExitSuccess,
-                _ => CommandOutcome::KeepRunning,
+        match self.parse_and_run_command(cmd, args, h5file) {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                self.printer().print_cmd_error(&err);
+                match err {
+                    CommandError::Critical(_) => CommandOutcome::ExitFailure,
+                    CommandError::Exit => CommandOutcome::ExitSuccess,
+                    _ => CommandOutcome::KeepRunning,
+                }
             }
-        } else {
-            CommandOutcome::KeepRunning
         }
     }
 
@@ -82,7 +82,7 @@ impl Shell {
             Err(err) => match err.kind() {
                 clap::error::ErrorKind::DisplayHelp => {
                     self.printer().println(cmd.arg_parser().render_help());
-                    Ok(())
+                    Ok(CommandOutcome::KeepRunning)
                 }
                 _ => {
                     self.printer().println(err.render());

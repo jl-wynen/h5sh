@@ -2,6 +2,7 @@ use anyhow::{Result, bail};
 use indexmap::IndexMap;
 use smallvec::SmallVec;
 
+use super::file::H5File;
 use super::path::H5Path;
 
 // This is a generic struct to simplify testing.
@@ -26,6 +27,7 @@ pub enum CacheEntry<Value> {
     },
 }
 
+use crate::h5::H5Object;
 pub use CacheEntry::{Group, Leaf};
 
 impl<Value> FileCache<Value> {
@@ -102,6 +104,18 @@ impl<Value> FileCache<Value> {
             .collect::<SmallVec<_, 4>>();
         let parent = self.get_mut(parent).unwrap();
         parent.insert_children(child_ids)
+    }
+}
+
+impl H5FileCache {
+    pub fn with_root(file: &H5File) -> super::Result<Self> {
+        let mut cache = Self::new();
+
+        let path = H5Path::from("/");
+        let root = file.load(&path)?;
+        cache.insert_group(&path, CacheValue::from_h5object(&root)?);
+
+        Ok(cache)
     }
 }
 
@@ -214,6 +228,12 @@ pub struct CacheValue {
 }
 
 impl CacheValue {
+    pub fn from_h5object(object: &H5Object) -> super::Result<Self> {
+        Ok(Self {
+            location_info: object.location_info()?,
+        })
+    }
+
     pub fn from_location_info(location_info: hdf5::LocationInfo) -> Self {
         Self { location_info }
     }

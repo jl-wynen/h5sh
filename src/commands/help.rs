@@ -5,7 +5,7 @@ use crossterm::{
 };
 use std::io::{Write, stdout};
 
-use crate::cmd::{CmdResult, Command};
+use crate::cmd::{CmdResult, Command, CommandOutcome};
 use crate::h5::H5File;
 use crate::shell::Shell;
 
@@ -13,7 +13,7 @@ use crate::shell::Shell;
 pub struct Help;
 
 impl Command for Help {
-    fn run(&self, _args: ArgMatches, shell: &mut Shell, _file: &H5File) -> CmdResult {
+    fn run(&self, _args: ArgMatches, shell: &Shell, _file: &H5File) -> CmdResult {
         let mut descriptions: Vec<_> = shell
             .commands()
             .iter()
@@ -34,7 +34,7 @@ impl Command for Help {
             .max()
             .unwrap_or(0);
         let _ = print_commands(descriptions, name_length);
-        Ok(())
+        Ok(CommandOutcome::KeepRunning)
     }
 
     fn arg_parser(&self) -> clap::Command {

@@ -1,5 +1,5 @@
 use crate::h5::{
-    self, CacheEntry, CacheEntryId, FileCache, H5Path,
+    self, CacheEntry, CacheEntryId, CacheValue, FileCache, H5Path,
     cache::{Group, Leaf},
 };
 use smallvec::SmallVec;
@@ -10,7 +10,7 @@ pub(super) fn path_completions<Value, LoadChildren, Children>(
     load_children: LoadChildren,
 ) -> Vec<H5Path>
 where
-    LoadChildren: Fn(&H5Path) -> h5::Result<Children>,
+    LoadChildren: Fn(&Value) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, Value, bool)>,
 {
     if let Some(entry) = cache.get(current) {
@@ -46,7 +46,7 @@ fn get_all_children<'c, Value, LoadChildren, Children>(
     load_children: LoadChildren,
 ) -> Option<impl Iterator<Item = &'c H5Path>>
 where
-    LoadChildren: Fn(&H5Path) -> h5::Result<Children>,
+    LoadChildren: Fn(&Value) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, Value, bool)>,
 {
     // The children might already be loaded, if so, bypass the (somewhat) expensive
@@ -101,7 +101,7 @@ fn load_children_of_all<Value, LoadChildren, Children>(
     load_children: LoadChildren,
 ) -> h5::Result<()>
 where
-    LoadChildren: Fn(&H5Path) -> h5::Result<Children>,
+    LoadChildren: Fn(&Value) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, Value, bool)>,
 {
     let mut path = starting_path.clone();
@@ -121,12 +121,16 @@ fn load_children_of<Value, LoadChildren, Children>(
     load_children: LoadChildren,
 ) -> h5::Result<()>
 where
-    LoadChildren: Fn(&H5Path) -> h5::Result<Children>,
+    LoadChildren: Fn(&Value) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, Value, bool)>,
 {
     // Only load and insert children if they have not already been loaded.
-    if let Some(Group { children: None, .. }) = cache.get(path) {
-        let _ = cache.insert_children(path.clone(), load_children(path)?);
+    if let Some(Group {
+        children: None,
+        value,
+    }) = cache.get(path)
+    {
+        let _ = cache.insert_children(path.clone(), load_children(value)?);
     }
     Ok(())
 }
@@ -201,17 +205,17 @@ mod tests {
         Ok(cache)
     }
 
-    fn child_loader() -> impl Fn(&H5Path) -> h5::Result<Vec<(H5Path, i32, bool)>> {
+    fn child_loader() -> impl Fn(&i32) -> h5::Result<Vec<(H5Path, i32, bool)>> {
         let extra_children = HashMap::from([
             (
-                H5Path::from("/base/aa"),
+                3, // /base/aa
                 vec![
                     (H5Path::from("/base/aa/xx"), 100, false),
                     (H5Path::from("/base/aa/yy"), 101, true),
                 ],
             ),
             (
-                H5Path::from("/base/aa/yy"),
+                101, // /base/aa/yy"
                 vec![
                     (H5Path::from("/base/aa/yy/z1"), 102, false),
                     (H5Path::from("/base/aa/yy/z2"), 103, false),
@@ -220,9 +224,9 @@ mod tests {
             ),
         ]);
 
-        move |path| match extra_children.get(&path.normalized()) {
+        move |value| match extra_children.get(value) {
             Some(children) => Ok(children.clone()),
-            None => Err(h5::H5Error::NotFound(path.clone())),
+            None => Err(h5::H5Error::NotFound(format!("{value}").into())),
         }
     }
 
