@@ -32,3 +32,7 @@ pretty_assertions = "1.4.1"
 lto = 'thin'
 codegen-units = 1
 strip = true
+
+[workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
+# Configure linux builds to use CentOS:
+image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main-centos"
