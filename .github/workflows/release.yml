@@ -77,6 +77,8 @@ jobs:
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
+      - run: ls -l
+      - run: stat h5sh-*.zip
       - name: Upload binaries to GH release
         uses: svenstaro/upload-release-action@v2
         with:
