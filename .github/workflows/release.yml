@@ -50,7 +50,7 @@ jobs:
         if: "contains(matrix.target, 'windows')"
         run: |
           cd target/${{ matrix.target }}/release
-          zip ../../../${{ matrix.archive_name }} h5sh.exe
+          7z a ../../../${{ matrix.archive_name }} h5sh.exe
           cd -
       - name: Build | Prepare artifacts [-nix]
         if: "!contains(matrix.target, 'windows')"
