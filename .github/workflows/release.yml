@@ -3,6 +3,11 @@ on:
   release:
     types: [ published ]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the release to GitHub
+        default: false
+        type: boolean
 
 env:
   CARGO_INCREMENTAL: 0
@@ -26,38 +31,53 @@ jobs:
              os: windows-2025
              archive_name: h5sh-x86_64-pc-windows-msvc.zip
     steps:
-      - name: Setup | Install mold
+      - name: Install mold
         uses: rui314/setup-mold@v1
-      - name: Setup | Checkout
+      - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup | Install Rust
+      - name: Install Rust
         if: "!contains(matrix.os, 'ubuntu')"
         uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
-      - name: Setup | Install cross [Linux]
+      - name: Install cross [Linux]
         if: "contains(matrix.os, 'ubuntu')"
         uses: taiki-e/install-action@cross
 
-      - name: Build | Build [Cargo]
+      - name: Build [Cargo]
         if: "!contains(matrix.os, 'ubuntu')"
         run: cargo build --verbose --release --locked --target "${{ matrix.target }}"
-      - name: Build | Build [Cross]
+      - name: Build [Cross]
         if: "contains(matrix.os, 'ubuntu')"
         run: cross build --verbose --release --locked --target "${{ matrix.target }}"
-      - name: Build | Prepare artifacts [Windows]
+      - name: Prepare artifacts [Windows]
         if: "contains(matrix.target, 'windows')"
         run: |
           cd target/${{ matrix.target }}/release
           7z a ../../../${{ matrix.archive_name }} h5sh.exe
           cd -
-      - name: Build | Prepare artifacts [-nix]
+      - name: Prepare artifacts [-nix]
         if: "!contains(matrix.target, 'windows')"
         run: |
           cd target/${{ matrix.target }}/release
           zip ../../../${{ matrix.archive_name }} h5sh
           cd -
 
-      - name: Publish | Upload artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.archive_name }}
           path: ${{ matrix.archive_name }}
+
+  publish:
+    name: Publish to GitHub release
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+      - name: Upload binaries to GH release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: h5sh-*.zip
+          file_glob: true
