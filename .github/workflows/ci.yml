@@ -15,28 +15,28 @@ jobs:
     name: Formatting
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      - name: Setup | Checkout
         uses: actions/checkout@v4
-      - name: Install Rust
+      - name: Setup | Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
         with:
           components: rustfmt
-      - name: Rustfmt Check
+      - name: Test | Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1.1.1
 
   clippy:
     name: Clippy
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      - name: Setup | Checkout
         uses: actions/checkout@v4
-      - name: Install Rust
+      - name: Setup | Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
         with:
           components: clippy
-      - name: Setup Rust cache
+      - name: Setup | Setup Rust cache
         uses: Swatinem/rust-cache@v2
-      - name: Cargo clippy
+      - name: Test | Cargo clippy
         run: cargo clippy -- -Dwarnings
 
   test:
@@ -54,15 +54,15 @@ jobs:
     env:
       RUSTFLAGS: -D warnings
     steps:
-      - name: Install mold
+      - name: Setup | Install mold
         uses: rui314/setup-mold@v1
-      - name: Checkout
+      - name: Setup | Checkout
         uses: actions/checkout@v4
-      - name: Install Rust
+      - name: Setup | Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
-      - name: Setup Rust cache
+      - name: Setup | Setup Rust cache
         uses: Swatinem/rust-cache@v2
-      - name: Build
+      - name: Build | Build
         run: cargo build --verbose
-      - name: Run tests
+      - name: Test | Run tests
         run: cargo test --verbose
