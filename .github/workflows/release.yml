@@ -69,7 +69,7 @@ jobs:
 
   publish:
     name: Publish to GitHub release
-    if: ${{ inputs.publish }}
+    if: inputs.publish || (github.event_name == 'release' && github.event.action == 'published')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
