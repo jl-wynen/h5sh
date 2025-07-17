@@ -28,6 +28,10 @@ impl Commands {
 
         let mut aliases = IndexMap::new();
         aliases.insert("l".to_string(), "ls -l".to_string());
+        aliases.insert("..".to_string(), "cd ..".to_string());
+        aliases.insert("...".to_string(), "cd ../..".to_string());
+        aliases.insert("....".to_string(), "cd ../../..".to_string());
+        aliases.insert(".....".to_string(), "cd ../../../..".to_string());
 
         Self {
             base_commands: cmds,
