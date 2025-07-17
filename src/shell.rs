@@ -1,8 +1,10 @@
+use std::rc::Rc;
+
 use crate::cmd::{self, Command, CommandError, CommandOutcome};
 use crate::h5::{H5File, H5Path};
 use crate::line_editor::LineEditor;
+use crate::line_editor::parse::{Argument, Expression, Parser};
 use crate::output::Printer;
-use std::rc::Rc;
 
 pub struct Shell {
     working_group: H5Path,
@@ -48,13 +50,13 @@ impl Shell {
     }
 
     pub fn parse_and_execute_input(&mut self, input: &str, h5file: &H5File) -> CommandOutcome {
-        let (cmd, args) = split_cmd(input);
+        let (cmd, args) = parse_and_resolve_input(input);
         let Some(cmd) = self.get_command(cmd) else {
             self.printer()
                 .print_shell_error(format!("Unknown command: {cmd}"));
             return CommandOutcome::KeepRunning;
         };
-        match self.parse_and_run_command(cmd, args, h5file) {
+        match self.parse_and_run_command(cmd, &args, h5file) {
             Ok(outcome) => outcome,
             Err(err) => {
                 self.printer().print_cmd_error(&err);
@@ -69,13 +71,13 @@ impl Shell {
     fn parse_and_run_command(
         &mut self,
         cmd: Rc<dyn Command>,
-        args: &str,
+        args: &[&str],
         h5file: &H5File,
     ) -> cmd::CmdResult {
         match cmd
             .arg_parser()
             .no_binary_name(true)
-            .try_get_matches_from(split_args(args))
+            .try_get_matches_from(args)
         {
             Ok(matches) => cmd.run(matches, self, h5file),
             Err(err) => match err.kind() {
@@ -92,12 +94,61 @@ impl Shell {
     }
 }
 
-fn split_cmd(input: &str) -> (&str, &str) {
-    input.trim_start().split_once(' ').unwrap_or((input, ""))
+fn parse_and_resolve_input(src: &str) -> (&str, Vec<&str>) {
+    let expression = Parser::new(src).parse();
+
+    match expression {
+        Expression::Call(call) => (
+            call.function.get_content(src),
+            collect_args(&call.arguments, src),
+        ),
+        Expression::String(string) => (string.get_content(src), Vec::new()),
+        Expression::Noop => ("", Vec::new()),
+    }
 }
 
-fn split_args(args: &str) -> impl Iterator<Item = &str> {
-    // TODO properly handle quotes and escapes
-    //   this should be handled by / in cooperation with the editor for highlighting
-    args.split(' ').filter(|s| !s.is_empty())
+fn collect_args<'s>(arguments: &[Argument], src: &'s str) -> Vec<&'s str> {
+    arguments.iter().map(|arg| arg.get_content(src)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn parse_and_resolve_input_empty() {
+        let input = "";
+
+        let (cmd, args) = parse_and_resolve_input(input);
+        assert_eq!(cmd, "");
+        assert_eq!(args, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn parse_and_resolve_input_only_command() {
+        let input = "help";
+
+        let (cmd, args) = parse_and_resolve_input(input);
+        assert_eq!(cmd, "help");
+        assert_eq!(args, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn parse_and_resolve_input_command_with_pos_arg() {
+        let input = "cd some/where";
+
+        let (cmd, args) = parse_and_resolve_input(input);
+        assert_eq!(cmd, "cd");
+        assert_eq!(args, vec!["some/where"]);
+    }
+
+    #[test]
+    fn parse_and_resolve_input_command_with_mixed_arg() {
+        let input = "ls -l path";
+
+        let (cmd, args) = parse_and_resolve_input(input);
+        assert_eq!(cmd, "ls");
+        assert_eq!(args, vec!["-l", "path"]);
+    }
 }

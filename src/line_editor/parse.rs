@@ -2,7 +2,7 @@ use super::scanner::Scanner;
 use super::text_range::TextRange;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum Expression {
+pub enum Expression {
     Call(CallExpression),
     #[allow(dead_code)] // exists for future use
     String(StringExpression),
@@ -10,22 +10,34 @@ pub(super) enum Expression {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct CallExpression {
-    pub(super) function: StringExpression,
-    pub(super) arguments: Vec<Argument>,
+pub struct CallExpression {
+    pub function: StringExpression,
+    pub arguments: Vec<Argument>,
     pub(super) range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct StringExpression {
+pub struct StringExpression {
     pub(super) range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum Argument {
+pub enum Argument {
     Plain(StringExpression),
     Long(StringExpression),
     Short(StringExpression),
+}
+
+impl CallExpression {
+    pub fn get_content<'s>(&self, src: &'s str) -> &'s str {
+        &src[self.range]
+    }
+}
+
+impl StringExpression {
+    pub fn get_content<'s>(&self, src: &'s str) -> &'s str {
+        &src[self.range]
+    }
 }
 
 impl Argument {
@@ -36,23 +48,27 @@ impl Argument {
             Argument::Short(expr) => expr.range,
         }
     }
+
+    pub fn get_content<'s>(&self, src: &'s str) -> &'s str {
+        &src[self.range()]
+    }
 }
 
 #[derive(Debug)]
-pub(super) struct Parser<'a> {
+pub struct Parser<'a> {
     scanner: Scanner<'a>,
     current_range: TextRange,
 }
 
 impl<'a> Parser<'a> {
-    pub(super) fn new(src: &'a str) -> Self {
+    pub fn new(src: &'a str) -> Self {
         Self {
             scanner: Scanner::new(src),
             current_range: Default::default(),
         }
     }
 
-    pub(super) fn parse(&mut self) -> Expression {
+    pub fn parse(&mut self) -> Expression {
         self.parse_expression()
     }
 
