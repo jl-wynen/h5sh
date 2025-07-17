@@ -50,8 +50,8 @@ impl Shell {
     }
 
     pub fn parse_and_execute_input(&mut self, input: &str, h5file: &H5File) -> CommandOutcome {
-        let (cmd, args) = parse_and_resolve_input(input);
-        let Some(cmd) = self.get_command(cmd) else {
+        let (cmd, args) = parse_and_resolve_input(input, &self.commands);
+        let Some(cmd) = self.get_command(&cmd) else {
             self.printer()
                 .print_shell_error(format!("Unknown command: {cmd}"));
             return CommandOutcome::KeepRunning;
@@ -71,7 +71,7 @@ impl Shell {
     fn parse_and_run_command(
         &mut self,
         cmd: Rc<dyn Command>,
-        args: &[&str],
+        args: &[String],
         h5file: &H5File,
     ) -> cmd::CmdResult {
         match cmd
@@ -94,21 +94,30 @@ impl Shell {
     }
 }
 
-fn parse_and_resolve_input(src: &str) -> (&str, Vec<&str>) {
+fn parse_and_resolve_input(src: &str, commands: &cmd::Commands) -> (String, Vec<String>) {
     let expression = Parser::new(src).parse();
 
     match expression {
-        Expression::Call(call) => (
-            call.function.get_content(src),
-            collect_args(&call.arguments, src),
-        ),
-        Expression::String(string) => (string.get_content(src), Vec::new()),
-        Expression::Noop => ("", Vec::new()),
+        Expression::Call(call) => {
+            let function = call.function.get_content(src);
+            match commands.get_alias(function) {
+                Some(alias) => parse_and_resolve_input(
+                    &format!("{alias} {}", call.get_args_str(src)),
+                    commands,
+                ),
+                None => (function.to_string(), collect_args(&call.arguments, src)),
+            }
+        }
+        Expression::String(string) => (string.get_content(src).to_string(), Vec::new()),
+        Expression::Noop => (String::new(), Vec::new()),
     }
 }
 
-fn collect_args<'s>(arguments: &[Argument], src: &'s str) -> Vec<&'s str> {
-    arguments.iter().map(|arg| arg.get_content(src)).collect()
+fn collect_args(arguments: &[Argument], src: &str) -> Vec<String> {
+    arguments
+        .iter()
+        .map(|arg| arg.get_content(src).to_string())
+        .collect()
 }
 
 #[cfg(test)]
@@ -119,8 +128,9 @@ mod tests {
     #[test]
     fn parse_and_resolve_input_empty() {
         let input = "";
+        let commands = cmd::Commands::new();
 
-        let (cmd, args) = parse_and_resolve_input(input);
+        let (cmd, args) = parse_and_resolve_input(input, &commands);
         assert_eq!(cmd, "");
         assert_eq!(args, Vec::<&str>::new());
     }
@@ -128,8 +138,9 @@ mod tests {
     #[test]
     fn parse_and_resolve_input_only_command() {
         let input = "help";
+        let commands = cmd::Commands::new();
 
-        let (cmd, args) = parse_and_resolve_input(input);
+        let (cmd, args) = parse_and_resolve_input(input, &commands);
         assert_eq!(cmd, "help");
         assert_eq!(args, Vec::<&str>::new());
     }
@@ -137,8 +148,9 @@ mod tests {
     #[test]
     fn parse_and_resolve_input_command_with_pos_arg() {
         let input = "cd some/where";
+        let commands = cmd::Commands::new();
 
-        let (cmd, args) = parse_and_resolve_input(input);
+        let (cmd, args) = parse_and_resolve_input(input, &commands);
         assert_eq!(cmd, "cd");
         assert_eq!(args, vec!["some/where"]);
     }
@@ -146,9 +158,55 @@ mod tests {
     #[test]
     fn parse_and_resolve_input_command_with_mixed_arg() {
         let input = "ls -l path";
+        let commands = cmd::Commands::new();
 
-        let (cmd, args) = parse_and_resolve_input(input);
+        let (cmd, args) = parse_and_resolve_input(input, &commands);
         assert_eq!(cmd, "ls");
         assert_eq!(args, vec!["-l", "path"]);
+    }
+
+    #[test]
+    fn parse_and_resolve_input_only_alias() {
+        let input = "l";
+        let mut commands = cmd::Commands::new();
+        commands.add_alias("l", "ls -l");
+
+        let (cmd, args) = parse_and_resolve_input(input, &commands);
+        assert_eq!(cmd, "ls");
+        assert_eq!(args, vec!["-l"]);
+    }
+
+    #[test]
+    fn parse_and_resolve_input_alias_with_pos_arg() {
+        let input = "l path";
+        let mut commands = cmd::Commands::new();
+        commands.add_alias("l", "ls -l");
+
+        let (cmd, args) = parse_and_resolve_input(input, &commands);
+        assert_eq!(cmd, "ls");
+        assert_eq!(args, vec!["-l", "path"]);
+    }
+
+    #[test]
+    fn parse_and_resolve_input_alias_with_mixed_arg() {
+        let input = "l --name path";
+        let mut commands = cmd::Commands::new();
+        commands.add_alias("l", "ls -l");
+
+        let (cmd, args) = parse_and_resolve_input(input, &commands);
+        assert_eq!(cmd, "ls");
+        assert_eq!(args, vec!["-l", "--name", "path"]);
+    }
+
+    #[test]
+    fn parse_and_resolve_input_recursive_alias_with_mixed_arg() {
+        let input = "dir group/inner --name";
+        let mut commands = cmd::Commands::new();
+        commands.add_alias("dir", "l --type");
+        commands.add_alias("l", "ls -l");
+
+        let (cmd, args) = parse_and_resolve_input(input, &commands);
+        assert_eq!(cmd, "ls");
+        assert_eq!(args, vec!["-l", "--type", "group/inner", "--name"]);
     }
 }

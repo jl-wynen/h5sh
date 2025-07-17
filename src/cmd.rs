@@ -47,6 +47,15 @@ impl Commands {
         self.base_commands.get(name).cloned()
     }
 
+    pub fn get_alias(&self, name: &str) -> Option<&str> {
+        self.aliases.get(name).map(|s| s.as_str())
+    }
+
+    #[cfg(test)] // for now not accessible to users
+    pub fn add_alias(&mut self, name: &str, alias: &str) {
+        self.aliases.insert(name.to_string(), alias.to_string());
+    }
+
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.base_commands.keys().chain(self.aliases.keys())
     }
