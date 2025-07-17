@@ -9,7 +9,7 @@ use crate::output::Printer;
 pub struct Shell {
     working_group: H5Path,
     printer: Printer,
-    commands: cmd::CommandMap,
+    commands: cmd::Commands,
 }
 
 impl Shell {
@@ -17,7 +17,7 @@ impl Shell {
         Self {
             working_group: H5Path::root(),
             printer: Printer::new(),
-            commands: cmd::commands(),
+            commands: cmd::Commands::new(),
         }
     }
 
@@ -25,12 +25,12 @@ impl Shell {
         &self.printer
     }
 
-    pub fn commands(&self) -> &cmd::CommandMap {
+    pub fn commands(&self) -> &cmd::Commands {
         &self.commands
     }
 
-    pub fn get_command(&self, name: &str) -> Option<Rc<dyn Command>> {
-        self.commands.get(name).cloned()
+    fn get_command(&self, name: &str) -> Option<Rc<dyn Command>> {
+        self.commands.get_command(name)
     }
 
     pub fn get_working_group(&self) -> &H5Path {

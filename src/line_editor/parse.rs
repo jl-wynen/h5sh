@@ -28,12 +28,6 @@ pub enum Argument {
     Short(StringExpression),
 }
 
-impl CallExpression {
-    pub fn get_content<'s>(&self, src: &'s str) -> &'s str {
-        &src[self.range]
-    }
-}
-
 impl StringExpression {
     pub fn get_content<'s>(&self, src: &'s str) -> &'s str {
         &src[self.range]

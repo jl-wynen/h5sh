@@ -12,16 +12,36 @@ pub trait Command {
     fn arg_parser(&self) -> clap::Command;
 }
 
-pub type CommandMap = IndexMap<String, Rc<dyn Command>>;
+pub struct Commands {
+    base_commands: IndexMap<String, Rc<dyn Command>>,
+    aliases: IndexMap<String, String>,
+}
 
-pub fn commands() -> CommandMap {
-    let mut cmds = CommandMap::new();
-    cmds.insert("cd".to_string(), Rc::new(commands::Cd));
-    cmds.insert("exit".to_string(), Rc::new(commands::Exit));
-    cmds.insert("help".to_string(), Rc::new(commands::Help));
-    cmds.insert("ls".to_string(), Rc::new(commands::Ls));
-    cmds.insert("pwd".to_string(), Rc::new(commands::Pwd));
-    cmds
+impl Commands {
+    pub fn new() -> Commands {
+        let mut cmds: IndexMap<String, Rc<dyn Command>> = IndexMap::new();
+        cmds.insert("cd".to_string(), Rc::new(commands::Cd));
+        cmds.insert("exit".to_string(), Rc::new(commands::Exit));
+        cmds.insert("help".to_string(), Rc::new(commands::Help));
+        cmds.insert("ls".to_string(), Rc::new(commands::Ls));
+        cmds.insert("pwd".to_string(), Rc::new(commands::Pwd));
+        Self {
+            base_commands: cmds,
+            aliases: IndexMap::new(),
+        }
+    }
+
+    pub fn iter_base_commands(&self) -> impl Iterator<Item = (&String, &Rc<dyn Command>)> {
+        self.base_commands.iter()
+    }
+
+    pub fn get_command(&self, name: &str) -> Option<Rc<dyn Command>> {
+        self.base_commands.get(name).cloned()
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.base_commands.keys().chain(self.aliases.keys())
+    }
 }
 
 #[derive(Clone, Debug)]

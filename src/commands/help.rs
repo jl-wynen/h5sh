@@ -16,7 +16,7 @@ impl Command for Help {
     fn run(&self, _args: ArgMatches, shell: &Shell, _file: &H5File) -> CmdResult {
         let mut descriptions: Vec<_> = shell
             .commands()
-            .iter()
+            .iter_base_commands()
             .map(|(name, cmd)| {
                 (
                     name,
@@ -66,7 +66,7 @@ fn print_command_help<Q: QueueableCommand>(
     name_length: usize,
 ) -> std::io::Result<()> {
     queue
-        .queue(SetForegroundColor(Color::White))?
+        .queue(SetForegroundColor(Color::Blue))?
         .queue(Print(format!("{name:name_length$}")))?
         .queue(ResetColor)?
         .queue(Print("  "))?
