@@ -25,14 +25,22 @@ impl Commands {
         cmds.insert("help".to_string(), Rc::new(commands::Help));
         cmds.insert("ls".to_string(), Rc::new(commands::Ls));
         cmds.insert("pwd".to_string(), Rc::new(commands::Pwd));
+
+        let mut aliases = IndexMap::new();
+        aliases.insert("l".to_string(), "ls -l".to_string());
+
         Self {
             base_commands: cmds,
-            aliases: IndexMap::new(),
+            aliases,
         }
     }
 
-    pub fn iter_base_commands(&self) -> impl Iterator<Item = (&String, &Rc<dyn Command>)> {
-        self.base_commands.iter()
+    pub fn iter_base_commands(&self) -> impl Iterator<Item = (&str, &Rc<dyn Command>)> {
+        self.base_commands.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    pub fn iter_aliases(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.aliases.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
 
     pub fn get_command(&self, name: &str) -> Option<Rc<dyn Command>> {
