@@ -1,4 +1,4 @@
-use clap::{Arg, Args, CommandFactory, Parser};
+use clap::{Args, CommandFactory, Parser};
 use crossterm::{
     queue,
     style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
@@ -26,12 +26,29 @@ struct CliArguments {
 enum CliCommands {
     /// (Default) Open a HDF5 file.
     Open(CliOpenArgs),
+    /// Manage the h5sh executable.
+    #[command(name = "self")]
+    Self_(CliSelfArgs),
 }
 
 #[derive(Args, Debug)]
 struct CliOpenArgs {
     /// HDF5 file to open.
     pub path: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct CliSelfArgs {
+    #[command(subcommand)]
+    command: SelfCommand,
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub enum SelfCommand {
+    /// Update h5py.
+    Update,
+    /// Uninstall h5py.
+    Uninstall,
 }
 
 #[derive(Debug)]
@@ -43,11 +60,17 @@ pub struct Arguments {
 #[derive(Debug)]
 pub enum Commands {
     Open(OpenArgs),
+    Self_(SelfArgs),
 }
 
 #[derive(Debug)]
 pub struct OpenArgs {
     pub path: PathBuf,
+}
+
+#[derive(Debug)]
+pub struct SelfArgs {
+    pub command: SelfCommand,
 }
 
 impl Arguments {
@@ -79,6 +102,9 @@ fn normalize_arguments(args: CliArguments) -> Arguments {
 fn normalize_command(command: CliCommands) -> Commands {
     match command {
         CliCommands::Open(open_args) => Commands::Open(normalize_open_args(open_args)),
+        CliCommands::Self_(self_args) => Commands::Self_(SelfArgs {
+            command: self_args.command,
+        }),
     }
 }
 

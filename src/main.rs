@@ -6,7 +6,7 @@ mod line_editor;
 mod output;
 mod shell;
 
-use log::LevelFilter;
+use log::{LevelFilter, error};
 use simple_logger::SimpleLogger;
 use std::process::ExitCode;
 
@@ -18,6 +18,7 @@ fn main() -> ExitCode {
     configure_logging(args.verbose);
     match args.command {
         cli::Commands::Open(args) => open_file(args),
+        cli::Commands::Self_(args) => self_command(args),
     }
 }
 
@@ -65,6 +66,51 @@ fn open_file(args: cli::OpenArgs) -> ExitCode {
 
     editor.save_history().unwrap();
     exit_code
+}
+
+fn self_command(args: cli::SelfArgs) -> ExitCode {
+    match args.command {
+        cli::SelfCommand::Update => update_self(),
+        cli::SelfCommand::Uninstall => uninstall_self(),
+    }
+}
+
+fn update_self() -> ExitCode {
+    match run_self_update() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(err) => {
+            println!();
+            error!("{err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_self_update() -> anyhow::Result<()> {
+    use anyhow::bail;
+
+    let result = self_update::backends::github::Update::configure()
+        .repo_owner("jl-wynen")
+        .repo_name("h5sh")
+        .bin_name("h5sh")
+        .show_download_progress(true)
+        .current_version(self_update::cargo_crate_version!())
+        .build()?
+        .update();
+    match result {
+        Ok(status) => {
+            println!("{status}");
+            Ok(())
+        }
+        Err(err) => match err {
+            self_update::errors::Error::Update(msg) if msg.contains("aborted") => Ok(()),
+            _ => bail!(err.to_string()),
+        },
+    }
+}
+
+fn uninstall_self() -> ExitCode {
+    ExitCode::FAILURE
 }
 
 fn configure_logging(verbose: bool) {
