@@ -6,6 +6,8 @@ mod line_editor;
 mod output;
 mod shell;
 
+use log::LevelFilter;
+use simple_logger::SimpleLogger;
 use std::process::ExitCode;
 
 use cmd::CommandOutcome;
@@ -13,6 +15,7 @@ use line_editor::Poll;
 
 fn main() -> ExitCode {
     let args = cli::Arguments::parse();
+    configure_logging(args.verbose);
     match args.command {
         cli::Commands::Open(args) => open_file(args),
     }
@@ -63,4 +66,15 @@ fn open_file(args: cli::OpenArgs) -> ExitCode {
 
     editor.save_history().unwrap();
     exit_code
+}
+
+fn configure_logging(verbose: bool) {
+    SimpleLogger::new()
+        .with_level(if verbose {
+            LevelFilter::Info
+        } else {
+            LevelFilter::Warn
+        })
+        .init()
+        .unwrap();
 }
