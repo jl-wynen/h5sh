@@ -1,3 +1,4 @@
+mod cli;
 mod cmd;
 mod commands;
 mod h5;
@@ -5,15 +6,19 @@ mod line_editor;
 mod output;
 mod shell;
 
-use clap::Parser;
-use std::path::PathBuf;
 use std::process::ExitCode;
 
 use cmd::CommandOutcome;
 use line_editor::Poll;
 
 fn main() -> ExitCode {
-    let args = Arguments::parse();
+    let args = cli::Arguments::parse();
+    match args.command {
+        cli::Commands::Open(args) => open_file(args),
+    }
+}
+
+fn open_file(args: cli::OpenArgs) -> ExitCode {
     // TODO setup logging
     let mut shell = shell::Shell::new();
     let h5file = match h5::H5File::open(args.path.clone()) {
@@ -58,16 +63,4 @@ fn main() -> ExitCode {
 
     editor.save_history().unwrap();
     exit_code
-}
-
-/// Interactive shell for HDF5 files.
-#[derive(Parser, Debug)]
-#[command(version, about, long_about)]
-struct Arguments {
-    /// HDF5 file to open.
-    path: PathBuf,
-
-    /// Enable extra output.
-    #[arg(short, long)]
-    verbose: bool,
 }
