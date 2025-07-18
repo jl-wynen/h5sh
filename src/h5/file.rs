@@ -17,6 +17,10 @@ impl H5File {
         Ok(Self { file })
     }
 
+    pub fn filename(&self) -> String {
+        self.file.filename()
+    }
+
     pub fn load<L: LocationSpec>(&self, location: L) -> Result<H5Object> {
         let location = location.into_location(&self.file)?;
         H5Object::from_location(H5Path::from(location.name()), &location)

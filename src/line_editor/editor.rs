@@ -2,7 +2,9 @@ use super::completion;
 use super::parse::{Argument, Expression, Parser, StringExpression};
 use super::text_index::TextIndex;
 use crate::h5::{self, CacheValue, H5Error, H5File, H5FileCache, H5Object, H5Path};
+use crate::shell::Shell;
 
+use crate::prompt::Prompt;
 use crossterm::{
     ExecutableCommand,
     style::{Attribute, Color, Print, PrintStyledContent, Stylize},
@@ -25,6 +27,7 @@ type UnderlyingEditor<'f> = rustyline::Editor<Hinter<'f>, DefaultHistory>;
 
 pub struct LineEditor<'f> {
     editor: UnderlyingEditor<'f>,
+    prompt: Prompt,
 }
 
 impl<'f> LineEditor<'f> {
@@ -43,11 +46,14 @@ impl<'f> LineEditor<'f> {
         if editor.load_history(&history_path()).is_err() {
             info!("No previous history.");
         }
-        Ok(Self { editor })
+        Ok(Self {
+            editor,
+            prompt: Prompt::new(),
+        })
     }
 
-    pub fn poll(&mut self) -> Poll {
-        let line = self.editor.readline("|> ");
+    pub fn poll(&mut self, shell: &Shell, h5file: &H5File) -> Poll {
+        let line = self.editor.readline(&self.prompt.render(shell, h5file));
         match line {
             Ok(line) => {
                 if line.is_empty() {

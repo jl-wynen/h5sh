@@ -4,6 +4,7 @@ mod commands;
 mod h5;
 mod line_editor;
 mod output;
+mod prompt;
 mod shell;
 
 use log::{LevelFilter, error};
@@ -40,7 +41,7 @@ fn open_file(args: cli::OpenArgs) -> ExitCode {
     };
     let mut exit_code = ExitCode::SUCCESS;
     loop {
-        match editor.poll() {
+        match editor.poll(&shell, &h5file) {
             Poll::Cmd(input) => match shell.parse_and_execute_input(&input, &h5file) {
                 CommandOutcome::KeepRunning => {}
                 CommandOutcome::ChangeWorkingGroup(new_working_group) => {
