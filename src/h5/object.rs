@@ -40,6 +40,10 @@ impl H5Dataset {
     pub fn location_info(&self) -> hdf5::Result<hdf5::LocationInfo> {
         self.underlying().loc_info()
     }
+
+    pub fn type_descriptor(&self) -> Result<hdf5::types::TypeDescriptor> {
+        Ok(self.underlying().dtype()?.to_descriptor()?)
+    }
 }
 
 impl H5Group {

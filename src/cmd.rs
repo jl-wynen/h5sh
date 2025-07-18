@@ -21,6 +21,7 @@ impl Commands {
     pub fn new() -> Commands {
         let mut cmds: IndexMap<String, Rc<dyn Command>> = IndexMap::new();
         cmds.insert("cd".to_string(), Rc::new(commands::Cd));
+        cmds.insert("cat".to_string(), Rc::new(commands::Cat));
         cmds.insert("exit".to_string(), Rc::new(commands::Exit));
         cmds.insert("help".to_string(), Rc::new(commands::Help));
         cmds.insert("ls".to_string(), Rc::new(commands::Ls));
@@ -101,6 +102,12 @@ impl Display for CommandError {
 
 impl From<H5Error> for CommandError {
     fn from(err: H5Error) -> Self {
+        CommandError::Error(err.to_string())
+    }
+}
+
+impl From<hdf5::Error> for CommandError {
+    fn from(err: hdf5::Error) -> Self {
         CommandError::Error(err.to_string())
     }
 }

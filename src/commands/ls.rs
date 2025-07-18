@@ -12,7 +12,7 @@ use std::fmt::{Display, Formatter};
 use std::io::{Write, stdout};
 
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
-use crate::h5::{H5Dataset, H5File, H5Object, H5Path};
+use crate::h5::{H5File, H5Object, H5Path};
 use crate::output::Printer;
 use crate::shell::Shell;
 
@@ -301,7 +301,7 @@ fn build_dtype_column<'alloc>(
     for (_, object) in objects {
         match object {
             H5Object::Dataset(dataset) => {
-                let (width, formatted) = if let Some(descriptor) = get_type_descriptor(dataset) {
+                let (width, formatted) = if let Ok(descriptor) = dataset.type_descriptor() {
                     format_dtype(&descriptor, printer, bump)?
                 } else {
                     format_unknown_dtype(bump)?
@@ -316,10 +316,6 @@ fn build_dtype_column<'alloc>(
         }
     }
     Ok(column)
-}
-
-fn get_type_descriptor(dataset: &H5Dataset) -> Option<hdf5::types::TypeDescriptor> {
-    dataset.underlying().dtype().ok()?.to_descriptor().ok()
 }
 
 fn format_dtype<'alloc>(
