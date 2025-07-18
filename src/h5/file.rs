@@ -1,3 +1,4 @@
+use log::info;
 use std::path::PathBuf;
 
 use super::error::{H5Error, Result};
@@ -11,6 +12,7 @@ pub struct H5File {
 
 impl H5File {
     pub fn open(path: PathBuf) -> std::io::Result<Self> {
+        info!("Opening file: {:}", path.display());
         let file = hdf5::File::open(path)?;
         Ok(Self { file })
     }

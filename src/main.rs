@@ -22,7 +22,6 @@ fn main() -> ExitCode {
 }
 
 fn open_file(args: cli::OpenArgs) -> ExitCode {
-    // TODO setup logging
     let mut shell = shell::Shell::new();
     let h5file = match h5::H5File::open(args.path.clone()) {
         Ok(h5file) => h5file,
