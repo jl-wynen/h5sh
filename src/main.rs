@@ -110,7 +110,13 @@ fn run_self_update() -> anyhow::Result<()> {
 }
 
 fn uninstall_self() -> ExitCode {
-    ExitCode::FAILURE
+    match self_replace::self_delete() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            error!("{err}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn configure_logging(verbose: bool) {

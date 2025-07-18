@@ -757,6 +757,7 @@ dependencies = [
  "nu-ansi-term",
  "pretty_assertions",
  "rustyline",
+ "self-replace",
  "self_update",
  "simple_logger",
  "smallvec 2.0.0-alpha.11",

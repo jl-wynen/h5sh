@@ -23,6 +23,7 @@ lscolors = { version = "0.20" }
 nu-ansi-term = "0.50"
 rustyline = { version = "16", default-features = false, features = ["derive", "with-file-history"] }
 simple_logger = "5.0"
+self-replace = "1"
 self_update = { version = "0.42", features = ["compression-zip-deflate"] }
 smallvec = { version = "2.0.0-alpha.11", features = ["std"] }
 uutils_term_grid = "0.7"
