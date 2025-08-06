@@ -1,6 +1,7 @@
 mod cli;
 mod cmd;
 mod commands;
+mod data;
 mod h5;
 mod line_editor;
 mod output;
