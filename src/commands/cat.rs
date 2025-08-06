@@ -6,7 +6,6 @@ use hdf5::{
         FixedAscii, FixedUnicode, FloatSize, IntSize, TypeDescriptor, VarLenAscii, VarLenUnicode,
     },
 };
-use ndarray::IxDyn;
 use std::fmt::Display;
 
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
@@ -126,11 +125,11 @@ fn cat_bool(dataset: H5Dataset) -> CmdResult {
 }
 
 fn load_and_print<T: H5Type + Display>(dataset: H5Dataset) -> CmdResult {
-    match dataset.underlying().read::<T, IxDyn>() {
+    match dataset.read::<T>() {
         Ok(content) => {
             println!("{content}");
             Ok(CommandOutcome::KeepRunning)
         }
-        Err(err) => Err(CommandError::Error(err.to_string())),
+        Err(err) => Err(err.into()),
     }
 }

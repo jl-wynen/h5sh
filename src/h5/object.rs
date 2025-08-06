@@ -1,4 +1,5 @@
-use hdf5::LocationType;
+use hdf5::{H5Type, LocationType};
+use ndarray::{Array, IxDyn};
 
 use crate::h5::Result;
 use crate::h5::{H5Error, H5Path};
@@ -43,6 +44,10 @@ impl H5Dataset {
 
     pub fn type_descriptor(&self) -> Result<hdf5::types::TypeDescriptor> {
         Ok(self.underlying().dtype()?.to_descriptor()?)
+    }
+
+    pub fn read<T: H5Type>(&self) -> Result<Array<T, IxDyn>> {
+        Ok(self.underlying().read()?)
     }
 }
 
