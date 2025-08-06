@@ -754,6 +754,7 @@ dependencies = [
  "indexmap",
  "log",
  "lscolors",
+ "ndarray",
  "nu-ansi-term",
  "pretty_assertions",
  "rustyline",

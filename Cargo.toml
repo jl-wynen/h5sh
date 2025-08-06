@@ -20,6 +20,7 @@ hdf5 = { package = "hdf5-metno", version = "0.10", features = ["f16", "static"] 
 indexmap = "2.10"
 log = "0.4"
 lscolors = { version = "0.20" }
+ndarray = "0.16"
 nu-ansi-term = "0.50"
 rustyline = { version = "16", default-features = false, features = ["derive", "with-file-history"] }
 simple_logger = "5.0"
