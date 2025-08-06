@@ -157,6 +157,10 @@ impl Printer {
         };
         out
     }
+
+    pub fn terminal_size(&self) -> (u16, u16) {
+        crossterm::terminal::size().unwrap_or((48, 128))
+    }
 }
 
 const BYTE_UNITS_SHORT: [&str; 5] = ["B ", "Ki", "Mi", "Gi", "Ti"];

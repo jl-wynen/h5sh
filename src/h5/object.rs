@@ -49,6 +49,19 @@ impl H5Dataset {
     pub fn read<T: H5Type>(&self) -> Result<Array<T, IxDyn>> {
         Ok(self.underlying().read()?)
     }
+
+    pub fn read_first_n<T: H5Type>(&self, n: usize) -> Result<Array<T, IxDyn>> {
+        match self.underlying().ndim() {
+            0 => self.read(),
+            1 => self.read(), // TODO
+            2 => self.read(),
+            3 => self.read(),
+            4 => self.read(),
+            5 => self.read(),
+            6 => self.read(),
+            _ => self.read(), // This will probably never happen
+        }
+    }
 }
 
 impl H5Group {
