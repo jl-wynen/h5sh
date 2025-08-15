@@ -396,7 +396,10 @@ fn build_content_column<'alloc>(
     for (_, object) in objects {
         match object {
             H5Object::Dataset(dataset) => {
-                let formatted = format_dataset_content(dataset, width, printer, bump);
+                let formatted = format_dataset_content(dataset, width, printer, bump)
+                    .unwrap_or_else(|_| {
+                        data_failure_message(bump).unwrap_or_else(|_| BumpString::new_in(bump))
+                    });
                 column.widths.push(formatted.len());
                 column.formatted.push(formatted);
             }
@@ -414,20 +417,44 @@ fn format_dataset_content<'alloc>(
     width: usize,
     printer: &Printer,
     bump: &'alloc Bump,
-) -> BumpString<'alloc> {
+) -> std::io::Result<BumpString<'alloc>> {
     // TODO colour
-    let formatted = load_and_format_data(dataset, Some(5), printer, bump).unwrap_or_else(|err| {
-        use std::fmt::Write;
-        let mut message = BumpString::new_in(bump);
-        let _ = write!(&mut message, "{err}"); // TODO colour
-        message
-    });
-    formatted
-        .chars()
-        // Replace all whitespace to avoid line breaks or large jumps
-        .map(|c| if c.is_whitespace() { ' ' } else { c })
-        .take(width)
-        .collect_in(bump)
+    if dataset.ndim() > 1 {
+        data_placeholder(bump)
+    } else {
+        // TODO max elem and width
+        let formatted = load_and_format_data(dataset, Some(7), Some(15), printer, bump)
+            .unwrap_or_else(|err| {
+                use std::fmt::Write;
+                let mut message = BumpString::new_in(bump);
+                let _ = write!(&mut message, "{err}"); // TODO colour
+                message
+            });
+        Ok(formatted
+            .chars()
+            // Replace all whitespace to avoid line breaks or large jumps
+            .map(|c| if c.is_whitespace() { ' ' } else { c })
+            .take(width)
+            .collect_in(bump))
+    }
+}
+
+fn data_placeholder(bump: &Bump) -> std::io::Result<BumpString> {
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+    buffer
+        .execute(SetForegroundColor(Color::DarkGrey))?
+        .execute(Print("[...]"))?
+        .execute(ResetColor)?;
+    Ok(BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump)))
+}
+
+fn data_failure_message(bump: &Bump) -> std::io::Result<BumpString> {
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+    buffer
+        .execute(SetForegroundColor(Color::DarkRed))?
+        .execute(Print("Failed to load data"))?
+        .execute(ResetColor)?;
+    Ok(BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump)))
 }
 
 const PADDING_BUFFER: &str = "                                    ";

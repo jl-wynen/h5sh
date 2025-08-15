@@ -1,5 +1,5 @@
 use hdf5::{H5Type, LocationType};
-use ndarray::{Array, IxDyn};
+use ndarray::{Array, IxDyn, s};
 
 use crate::h5::Result;
 use crate::h5::{H5Error, H5Path};
@@ -46,20 +46,21 @@ impl H5Dataset {
         Ok(self.underlying().dtype()?.to_descriptor()?)
     }
 
+    pub fn ndim(&self) -> usize {
+        self.underlying().ndim()
+    }
+
     pub fn read<T: H5Type>(&self) -> Result<Array<T, IxDyn>> {
         Ok(self.underlying().read()?)
     }
 
     pub fn read_first_n<T: H5Type>(&self, n: usize) -> Result<Array<T, IxDyn>> {
-        match self.underlying().ndim() {
-            0 => self.read(),
-            1 => self.read(), // TODO
-            2 => self.read(),
-            3 => self.read(),
-            4 => self.read(),
-            5 => self.read(),
-            6 => self.read(),
-            _ => self.read(), // This will probably never happen
+        match self.underlying().shape()[..] {
+            [] => self.read(),
+            [size] => Ok(self.underlying().read_slice(s![..(n.min(size))])?),
+            _ => Err(H5Error::Other(
+                "Reading first n elements is only supported for scalar and 1d data.".to_string(),
+            )),
         }
     }
 }
