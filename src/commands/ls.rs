@@ -418,23 +418,20 @@ fn format_dataset_content<'alloc>(
     printer: &Printer,
     bump: &'alloc Bump,
 ) -> std::io::Result<BumpString<'alloc>> {
-    // TODO colour
     if dataset.ndim() > 1 {
         data_placeholder(bump)
     } else {
-        // TODO max elem and width
-        let formatted = load_and_format_data(dataset, Some(7), Some(15), printer, bump)
+        let formatted = load_and_format_data(dataset, Some(8), Some(width), printer, bump)
             .unwrap_or_else(|err| {
                 use std::fmt::Write;
                 let mut message = BumpString::new_in(bump);
-                let _ = write!(&mut message, "{err}"); // TODO colour
+                let _ = write!(&mut message, "{err}");
                 message
             });
         Ok(formatted
             .chars()
             // Replace all whitespace to avoid line breaks or large jumps
             .map(|c| if c.is_whitespace() { ' ' } else { c })
-            .take(width)
             .collect_in(bump))
     }
 }

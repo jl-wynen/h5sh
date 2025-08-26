@@ -187,16 +187,19 @@ mod load_and_format {
                     out.push_str(&trailing_ellipses);
                 }
             }
-        } else if let Some(max_width) = max_width {
-            let padded_width = out.len() + 4; // padded with " ..."
-            if max_width >= padded_width {
-                out.push_str(&trailing_ellipses);
+        } else {
+            out.truncate(out.len().saturating_sub(1)); // remove final ']'
+            if let Some(max_width) = max_width {
+                let padded_width = out.len() + 4; // padded with " ..."
+                if max_width >= padded_width {
+                    out.push_str(&trailing_ellipses);
+                } else {
+                    out.truncate(max_width.saturating_sub(4));
+                    out.push_str(&trailing_ellipses);
+                }
             } else {
-                out.truncate(max_width.saturating_sub(4));
                 out.push_str(&trailing_ellipses);
             }
-        } else {
-            out.push_str(&trailing_ellipses);
         }
         Ok(out)
     }
