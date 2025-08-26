@@ -60,8 +60,8 @@ impl<Value> FileCache<Value> {
             .map(|(index, _, entry)| (index.into(), entry))
     }
 
-    pub fn get_key(&self, id: CacheEntryId) -> Option<&H5Path> {
-        self.objects.get_index(id.0).map(|(key, _)| key)
+    pub fn get_key_value(&self, id: CacheEntryId) -> Option<(&H5Path, &CacheEntry<Value>)> {
+        self.objects.get_index(id.0)
     }
 
     pub fn insert_group(&mut self, path: &H5Path, value: Value) -> CacheEntryId {
