@@ -41,3 +41,8 @@ strip = true
 [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
 # Configure linux builds to use CentOS:
 image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main-centos"
+pre-build = [
+    # Install openssl, see https://github.com/cross-rs/cross/wiki/Recipes#pre-build
+    "dpkg --add-architecture $CROSS_DEB_ARCH",
+    "apt-get update && apt-get install --assume-yes libssl-dev:$CROSS_DEB_ARCH"
+]
