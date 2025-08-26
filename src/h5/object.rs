@@ -22,6 +22,12 @@ pub enum H5Object {
     Group(H5Group),
 }
 
+#[derive(Clone, Debug)]
+pub enum PartialData<T> {
+    Full(Array<T, IxDyn>),
+    FirstN(Array<T, IxDyn>),
+}
+
 impl H5Dataset {
     pub fn from_underlying(underlying: hdf5::Dataset) -> Self {
         Self {
@@ -54,10 +60,17 @@ impl H5Dataset {
         Ok(self.underlying().read()?)
     }
 
-    pub fn read_first_n<T: H5Type>(&self, n: usize) -> Result<Array<T, IxDyn>> {
+    pub fn read_first_n<T: H5Type>(&self, n: usize) -> Result<PartialData<T>> {
         match self.underlying().shape()[..] {
-            [] => self.read(),
-            [size] => Ok(self.underlying().read_slice(s![..(n.min(size))])?),
+            [] => Ok(PartialData::Full(self.read()?)),
+            [size] => {
+                let array = self.underlying().read_slice(s![..(n.min(size))])?;
+                if n < size {
+                    Ok(PartialData::FirstN(array))
+                } else {
+                    Ok(PartialData::Full(array))
+                }
+            }
             _ => Err(H5Error::Other(
                 "Reading first n elements is only supported for scalar and 1d data.".to_string(),
             )),
@@ -129,5 +142,14 @@ impl From<H5Dataset> for H5Object {
 impl From<H5Group> for H5Object {
     fn from(group: H5Group) -> Self {
         H5Object::Group(group)
+    }
+}
+
+impl<T> PartialData<T> {
+    pub fn array(&self) -> &Array<T, IxDyn> {
+        match self {
+            PartialData::Full(array) => array,
+            PartialData::FirstN(array) => array,
+        }
     }
 }

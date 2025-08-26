@@ -2,7 +2,7 @@ use bumpalo::{Bump, collections::String as BumpString};
 use hdf5::{H5Type, types::TypeDescriptor};
 use std::fmt::Display;
 
-use crate::h5::{self, H5Dataset};
+use crate::h5::{self, H5Dataset, PartialData};
 use crate::output::Printer;
 
 pub fn load_and_format_data<'alloc>(
@@ -152,6 +152,8 @@ mod load_and_format {
         load_and_format::<bool>(dataset, max_elem, max_width, bump)
     }
 
+    // Note that the max_width handling assumes that
+    // the formatted array contains no escape sequences.
     fn load_and_format<'alloc, T: H5Type + Display>(
         dataset: &H5Dataset,
         max_elem: Option<usize>,
@@ -163,17 +165,31 @@ mod load_and_format {
         let content = if let Some(max_elem) = max_elem {
             dataset.read_first_n::<T>(max_elem)
         } else {
-            dataset.read::<T>()
+            dataset.read::<T>().map(PartialData::Full)
         }?;
 
-        // TODO show ... when loading only part of data (also when nor all elems)
         let mut out = BumpString::new_in(bump);
-        if write!(&mut out, "{content}").is_err() {
+
+        if write!(&mut out, "{}", content.array()).is_err() {
             let _ = write!(&mut out, "<failed write>");
         };
-        if let Some(max_width) = max_width {
-            out.truncate(max_width.saturating_sub(5));
-            out.push_str(" ...]");
+        if matches!(content, PartialData::Full(_)) {
+            if let Some(max_width) = max_width {
+                if max_width < out.len() {
+                    out.truncate(max_width.saturating_sub(4));
+                    out.push_str(" ...");
+                }
+            }
+        } else if let Some(max_width) = max_width {
+            let padded_width = out.len() + 4; // padded with " ..."
+            if max_width >= padded_width {
+                out.push_str(" ...");
+            } else {
+                out.truncate(max_width.saturating_sub(4));
+                out.push_str(" ...");
+            }
+        } else {
+            out.push_str(" ...");
         }
         Ok(out)
     }
