@@ -26,7 +26,7 @@ nu-ansi-term = "0.50"
 rustyline = { version = "17", default-features = false, features = ["derive", "with-file-history"] }
 simple_logger = "5.0"
 self-replace = "1"
-self_update = { version = "0.42", features = ["compression-zip-deflate"] }
+self_update = { version = "0.42", default-features = false, features = ["compression-zip-deflate", "rustls"] }
 smallvec = { version = "2.0.0-alpha.11", features = ["std"] }
 uutils_term_grid = "0.7"
 
@@ -41,8 +41,3 @@ strip = true
 [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
 # Configure linux builds to use CentOS:
 image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main-centos"
-pre-build = [
-    # Install openssl, see https://github.com/cross-rs/cross/wiki/Recipes#pre-build
-    "dpkg --add-architecture $CROSS_DEB_ARCH",
-    "apt-get update && apt-get install --assume-yes libssl-dev:$CROSS_DEB_ARCH"
-]
