@@ -11,91 +11,10 @@ mod shell;
 use cmd::CommandOutcome;
 use line_editor::Poll;
 use log::{LevelFilter, error};
-use ndarray::Ix0;
 use simple_logger::SimpleLogger;
 use std::process::ExitCode;
 
-fn make_file() {
-    use core::str::FromStr;
-    use ndarray::{Array, Array0, Array1};
-    use ndarray::{Ix1, Ix2};
-    let file = hdf5::File::create("asd.h5").unwrap();
-
-    let scalars_group = file.create_group("scalars").unwrap();
-    let data = hdf5::types::VarLenAscii::from_ascii("asd".as_bytes()).unwrap();
-    scalars_group
-        .new_dataset_builder()
-        .with_data(&Array0::from_elem((), data))
-        .create("ascii")
-        .unwrap();
-    let data = hdf5::types::VarLenUnicode::from_str("asd").unwrap();
-    scalars_group
-        .new_dataset_builder()
-        .with_data(&Array0::from_elem((), data))
-        .create("utf-8")
-        .unwrap();
-    let data = hdf5::types::FixedAscii::<3>::from_ascii("asd".as_bytes()).unwrap();
-    scalars_group
-        .new_dataset_builder()
-        .with_data(&Array0::from_elem((), data))
-        .create("ascii(3)")
-        .unwrap();
-    let data = hdf5::types::FixedUnicode::<4>::from_str("åsd").unwrap();
-    scalars_group
-        .new_dataset_builder()
-        .with_data(&Array0::from_elem((), data))
-        .create("utf-8(4)")
-        .unwrap();
-    scalars_group
-        .new_dataset_builder()
-        .with_data(&Array::<i32, Ix0>::from_elem((), 2))
-        .create("i32")
-        .unwrap();
-
-    let d1_group = file.create_group("1d").unwrap();
-    d1_group
-        .new_dataset_builder()
-        .with_data(&Array::<i8, Ix1>::from(vec![1, 2]))
-        .create("i8")
-        .unwrap();
-    d1_group
-        .new_dataset_builder()
-        .with_data(&Array::<i16, Ix1>::from(vec![1, 2]))
-        .create("i16")
-        .unwrap();
-    d1_group
-        .new_dataset_builder()
-        .with_data(&Array::<i32, Ix1>::from(vec![1, 2]))
-        .create("i32")
-        .unwrap();
-    d1_group
-        .new_dataset_builder()
-        .with_data(&Array::<i64, Ix1>::from(vec![1, 2]))
-        .create("i64")
-        .unwrap();
-    d1_group
-        .new_dataset_builder()
-        .with_data(&Array::<f32, Ix1>::from(vec![1.2, 5.4, 7.9]))
-        .create("f32")
-        .unwrap();
-
-    let d2_group = file.create_group("2d").unwrap();
-    d2_group
-        .new_dataset_builder()
-        .with_data(&Array::<i32, Ix2>::from(vec![[-1, 2], [3, 4]]))
-        .create("i32")
-        .unwrap();
-    d2_group
-        .new_dataset_builder()
-        .with_data(&Array::<u64, Ix2>::from(vec![[1, 2], [3, 4]]))
-        .create("u64")
-        .unwrap();
-}
-
 fn main() -> ExitCode {
-    // make_file();
-    // return ExitCode::SUCCESS;
-
     let args = cli::Arguments::parse();
     configure_logging(args.verbose);
     match args.command {
