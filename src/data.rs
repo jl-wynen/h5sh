@@ -1,4 +1,8 @@
 use bumpalo::{Bump, collections::String as BumpString};
+use crossterm::{
+    ExecutableCommand,
+    style::{Color, Print, ResetColor, SetForegroundColor},
+};
 use hdf5::{H5Type, types::TypeDescriptor};
 use std::fmt::Display;
 
@@ -170,6 +174,9 @@ mod load_and_format {
 
         let mut out = BumpString::new_in(bump);
 
+        let mut buffer: Vec<u8> = Vec::new();
+        buffer.execute(Print(content.array())).unwrap();
+
         if write!(&mut out, "{}", content.array()).is_err() {
             let _ = write!(&mut out, "<failed write>");
         };
@@ -177,20 +184,31 @@ mod load_and_format {
             if let Some(max_width) = max_width {
                 if max_width < out.len() {
                     out.truncate(max_width.saturating_sub(4));
-                    out.push_str(" ...");
+                    out.push_str(&trailing_ellipses);
                 }
             }
         } else if let Some(max_width) = max_width {
             let padded_width = out.len() + 4; // padded with " ..."
             if max_width >= padded_width {
-                out.push_str(" ...");
+                out.push_str(&trailing_ellipses);
             } else {
                 out.truncate(max_width.saturating_sub(4));
-                out.push_str(" ...");
+                out.push_str(&trailing_ellipses);
             }
         } else {
-            out.push_str(" ...");
+            out.push_str(&trailing_ellipses);
         }
         Ok(out)
+    }
+
+    lazy_static::lazy_static! {
+        static ref trailing_ellipses: String = {
+            let mut buffer: Vec<u8> = Vec::new();
+            buffer.execute(Print(" ")).unwrap();
+            buffer.execute(SetForegroundColor(Color::DarkGrey)).unwrap();
+            buffer.execute(Print("...")).unwrap();
+            buffer.execute(ResetColor).unwrap();
+            String::from_utf8(buffer).unwrap()
+        };
     }
 }
