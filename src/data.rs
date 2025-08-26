@@ -73,7 +73,7 @@ mod load_and_format {
         max_width: Option<usize>,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
-        const MAX_N: usize = 32;
+        const MAX_N: usize = 1024;
         if n > MAX_N {
             return Err(H5Error::Other(format!(
                 "Can only read fixed-length strings of up to {MAX_N} bytes"
@@ -89,7 +89,7 @@ mod load_and_format {
         max_width: Option<usize>,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
-        const MAX_N: usize = 32;
+        const MAX_N: usize = 1024;
         if n > MAX_N {
             return Err(H5Error::Other(format!(
                 "Can only read fixed-length strings of up to {MAX_N} bytes"
