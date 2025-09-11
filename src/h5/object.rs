@@ -54,10 +54,6 @@ impl H5Dataset {
         self.underlying().loc_info()
     }
 
-    pub fn type_descriptor(&self) -> Result<hdf5::types::TypeDescriptor> {
-        Ok(self.underlying().dtype()?.to_descriptor()?)
-    }
-
     pub fn attr_names(&self) -> Result<Vec<String>> {
         Ok(self.underlying().attr_names()?)
     }
@@ -106,10 +102,6 @@ impl H5Attribute {
     pub fn underlying(&self) -> &hdf5::Attribute {
         &self.attribute
     }
-
-    pub fn name(&self) -> String {
-        self.underlying().name()
-    }
 }
 
 impl H5Object {
@@ -157,6 +149,12 @@ impl From<H5Dataset> for H5Object {
 impl From<H5Group> for H5Object {
     fn from(group: H5Group) -> Self {
         H5Object::Group(group)
+    }
+}
+
+impl From<H5Attribute> for H5Object {
+    fn from(attr: H5Attribute) -> Self {
+        H5Object::Attribute(attr)
     }
 }
 

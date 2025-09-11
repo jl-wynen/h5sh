@@ -122,7 +122,7 @@ fn print_object_table(
     show_content: bool,
 ) -> std::io::Result<()> {
     printer
-        .queue_object_table(&mut stdout(), objects, show_content)
+        .queue_object_table(&mut stdout(), &objects, show_content)
         .map(|_| ())
 }
 

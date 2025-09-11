@@ -195,7 +195,7 @@ impl Printer {
     pub fn queue_object_table<'q, Q: Write>(
         &self,
         queue: &'q mut Q,
-        objects: Vec<(&str, &H5Object)>,
+        objects: &[(&str, &H5Object)],
         show_content: bool,
     ) -> std::io::Result<&'q mut Q> {
         super::table::queue_object_table(queue, objects, self, show_content)
@@ -232,8 +232,7 @@ impl Style {
         Self {
             dataset: nu_ansi_term_style_for_indicator(&ls_colors, Indicator::RegularFile),
             group: nu_ansi_term_style_for_indicator(&ls_colors, Indicator::Directory),
-            // TODO pick indicator
-            attribute: nu_ansi_term_style_for_indicator(&ls_colors, Indicator::BlockDevice),
+            attribute: nu_ansi_term::Style::from(nu_ansi_term::Color::Cyan),
         }
     }
 

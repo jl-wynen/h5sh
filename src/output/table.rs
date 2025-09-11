@@ -1,5 +1,5 @@
 use crate::data::load_and_format_data;
-use crate::h5::{H5Dataset, H5Object};
+use crate::h5::H5Object;
 use crate::output::Printer;
 use bumpalo::{
     Bump,
@@ -10,10 +10,11 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
 use std::io::Write;
+use std::ops::Deref;
 
 pub(super) fn queue_object_table<'q, Q: Write>(
     queue: &'q mut Q,
-    objects: Vec<(&str, &H5Object)>,
+    objects: &[(&str, &H5Object)],
     printer: &Printer,
     show_content: bool,
 ) -> std::io::Result<&'q mut Q> {
@@ -21,10 +22,10 @@ pub(super) fn queue_object_table<'q, Q: Write>(
     let n_rows = objects.len();
 
     let mut columns = Vec::with_capacity(5);
-    columns.push(build_shape_column(&bump, &objects)?);
-    columns.push(build_size_column(&bump, &objects, printer)?);
-    columns.push(build_dtype_column(&bump, &objects, printer)?);
-    columns.push(build_name_column(&bump, &objects, printer)?);
+    columns.push(build_shape_column(&bump, objects)?);
+    columns.push(build_size_column(&bump, objects, printer)?);
+    columns.push(build_dtype_column(&bump, objects, printer)?);
+    columns.push(build_name_column(&bump, objects, printer)?);
 
     let mut widths: BumpVec<_> = columns.iter().map(Column::max_width).collect_in(&bump);
 
@@ -34,7 +35,7 @@ pub(super) fn queue_object_table<'q, Q: Write>(
         // -4 for spacing between columns
         let available_width = full_width as usize - used_width - 5 - 1;
 
-        let content_column = build_content_column(&bump, &objects, available_width, printer)?;
+        let content_column = build_content_column(&bump, objects, available_width, printer)?;
         widths.push(content_column.max_width());
         columns.push(content_column);
     }
@@ -51,7 +52,7 @@ fn queue_table_columns<'q, Q: Write>(
 ) -> std::io::Result<&'q mut Q> {
     for i_row in 0..n_rows {
         for (i_col, (column, &width)) in Iterator::zip(columns.iter(), widths.iter()).enumerate() {
-            let padding = width - column.widths[i_row];
+            let padding = width.saturating_sub(column.widths[i_row]);
             if !column.left_aligned {
                 printer.queue_padding(queue, padding)?;
             }
@@ -96,32 +97,9 @@ fn build_name_column<'alloc>(
         column.widths.push(name.len() + 1);
         column
             .formatted
-            .push(format_object_name(name, object, printer, bump));
+            .push(printer.format_object_name(name, object, bump));
     }
     Ok(column)
-}
-
-fn format_object_name<'alloc>(
-    name: &str,
-    object: &H5Object,
-    printer: &Printer,
-    bump: &'alloc Bump,
-) -> BumpString<'alloc> {
-    match object {
-        H5Object::Dataset(_) => {
-            let mut formatted = printer.apply_style_dataset_in(name, bump);
-            formatted.push(' ');
-            formatted
-        }
-        H5Object::Group(_) => {
-            let mut formatted = printer.apply_style_group_in(name, bump);
-            formatted.push('/');
-            formatted
-        }
-        H5Object::Attribute(_) => {
-            todo!("object name")
-        }
-    }
 }
 
 fn build_size_column<'alloc>(
@@ -135,32 +113,37 @@ fn build_size_column<'alloc>(
         left_aligned: false,
     };
     for (_, object) in objects {
-        match object {
+        let (width, formatted) = match object {
             H5Object::Dataset(dataset) => {
-                let size =
-                    printer.format_human_size_in(dataset.underlying().storage_size(), true, bump);
-
-                column.widths.push(size.len());
-
-                let mut buffer = BumpVec::<u8>::new_in(bump);
-                buffer
-                    .execute(SetForegroundColor(Color::DarkGreen))?
-                    .execute(Print(size))?
-                    .execute(ResetColor)?;
-                column.formatted.push(
-                    BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump)),
-                )
+                format_size(dataset.underlying().storage_size(), printer, bump)?
             }
-            H5Object::Group(_) => {
-                column.widths.push(0);
-                column.formatted.push(BumpString::new_in(bump));
+            H5Object::Group(_) => (0, BumpString::new_in(bump)),
+            H5Object::Attribute(attr) => {
+                format_size(attr.underlying().storage_size(), printer, bump)?
             }
-            H5Object::Attribute(_) => {
-                todo!("size column")
-            }
-        }
+        };
+        column.widths.push(width);
+        column.formatted.push(formatted);
     }
     Ok(column)
+}
+
+fn format_size<'alloc>(
+    size: u64,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> std::io::Result<(usize, BumpString<'alloc>)> {
+    let size = printer.format_human_size_in(size, true, bump);
+    let width = size.len();
+
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+    buffer
+        .execute(SetForegroundColor(Color::DarkGreen))?
+        .execute(Print(size))?
+        .execute(ResetColor)?;
+    let formatted = BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump));
+
+    Ok((width, formatted))
 }
 
 fn build_shape_column<'alloc>(
@@ -173,22 +156,13 @@ fn build_shape_column<'alloc>(
         left_aligned: true,
     };
     for (_, object) in objects {
-        match object {
-            H5Object::Dataset(dataset) => {
-                let shape = dataset.shape();
-                let (width, formatted) = format_shape(&shape, bump)?;
-                column.widths.push(width);
-                column.formatted.push(formatted);
-            }
-            H5Object::Group(_) => {
-                column.widths.push(0);
-                column.formatted.push(BumpString::new_in(bump));
-            }
-
-            H5Object::Attribute(_) => {
-                todo!("shape column")
-            }
-        }
+        let (width, formatted) = match object {
+            H5Object::Dataset(dataset) => format_shape(&dataset.shape(), bump)?,
+            H5Object::Group(_) => (0, BumpString::new_in(bump)),
+            H5Object::Attribute(attr) => format_shape(&attr.shape(), bump)?,
+        };
+        column.widths.push(width);
+        column.formatted.push(formatted);
     }
     Ok(column)
 }
@@ -233,29 +207,30 @@ fn build_dtype_column<'alloc>(
         left_aligned: true,
     };
     for (_, object) in objects {
-        match object {
-            H5Object::Dataset(dataset) => {
-                let (width, formatted) = if let Ok(descriptor) = dataset.type_descriptor() {
-                    format_dtype(&descriptor, printer, bump)?
-                } else {
-                    format_unknown_dtype(bump)?
-                };
-                column.widths.push(width);
-                column.formatted.push(formatted);
-            }
-            H5Object::Group(_) => {
-                column.widths.push(3);
-                column.formatted.push(BumpString::from_str_in("grp", bump));
-            }
-            H5Object::Attribute(_) => {
-                todo!("dtype column")
-            }
-        }
+        let (width, formatted) = match object {
+            H5Object::Dataset(dataset) => format_dtype_of(dataset, printer, bump)?,
+            H5Object::Group(_) => (3, BumpString::from_str_in("grp", bump)),
+            H5Object::Attribute(attr) => format_dtype_of(attr, printer, bump)?,
+        };
+        column.widths.push(width);
+        column.formatted.push(formatted);
     }
     Ok(column)
 }
 
-fn format_dtype<'alloc>(
+fn format_dtype_of<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> std::io::Result<(usize, BumpString<'alloc>)> {
+    if let Ok(descriptor) = container.dtype()?.to_descriptor() {
+        format_known_dtype(&descriptor, printer, bump)
+    } else {
+        format_unknown_dtype(bump)
+    }
+}
+
+fn format_known_dtype<'alloc>(
     descriptor: &hdf5::types::TypeDescriptor,
     printer: &Printer,
     bump: &'alloc Bump,
@@ -295,37 +270,34 @@ fn build_content_column<'alloc>(
         left_aligned: true,
     };
     for (_, object) in objects {
-        match object {
-            H5Object::Dataset(dataset) => {
-                let formatted = format_dataset_content(dataset, width, printer, bump)
-                    .unwrap_or_else(|_| {
-                        data_failure_message(bump).unwrap_or_else(|_| BumpString::new_in(bump))
-                    });
-                column.widths.push(formatted.len());
-                column.formatted.push(formatted);
+        let formatted = match object {
+            H5Object::Dataset(dataset) => format_content(dataset, width, printer, bump)
+                .unwrap_or_else(|_| {
+                    data_failure_message(bump).unwrap_or_else(|_| BumpString::new_in(bump))
+                }),
+            H5Object::Group(_) => BumpString::new_in(bump),
+            H5Object::Attribute(attr) => {
+                format_content(attr, width, printer, bump).unwrap_or_else(|_| {
+                    data_failure_message(bump).unwrap_or_else(|_| BumpString::new_in(bump))
+                })
             }
-            H5Object::Group(_) => {
-                column.widths.push(0);
-                column.formatted.push(BumpString::new_in(bump));
-            }
-            H5Object::Attribute(_) => {
-                todo!("content column")
-            }
-        }
+        };
+        column.widths.push(formatted.len());
+        column.formatted.push(formatted);
     }
     Ok(column)
 }
 
-fn format_dataset_content<'alloc>(
-    dataset: &H5Dataset,
+fn format_content<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
     width: usize,
     printer: &Printer,
     bump: &'alloc Bump,
 ) -> std::io::Result<BumpString<'alloc>> {
-    if dataset.ndim() > 1 {
+    if container.ndim() > 1 {
         data_placeholder(bump)
     } else {
-        let formatted = load_and_format_data(dataset, Some(8), Some(width), printer, bump)
+        let formatted = load_and_format_data(container, Some(8), Some(width), printer, bump)
             .unwrap_or_else(|err| {
                 use std::fmt::Write;
                 let mut message = BumpString::new_in(bump);
