@@ -20,6 +20,7 @@ pub struct Commands {
 impl Commands {
     pub fn new() -> Commands {
         let mut cmds: IndexMap<String, Rc<dyn Command>> = IndexMap::new();
+        cmds.insert("a".to_string(), Rc::new(commands::Attr));
         cmds.insert("cd".to_string(), Rc::new(commands::Cd));
         cmds.insert("cat".to_string(), Rc::new(commands::Cat));
         cmds.insert("exit".to_string(), Rc::new(commands::Exit));
@@ -108,6 +109,12 @@ impl From<H5Error> for CommandError {
 
 impl From<hdf5::Error> for CommandError {
     fn from(err: hdf5::Error) -> Self {
+        CommandError::Error(err.to_string())
+    }
+}
+
+impl From<std::io::Error> for CommandError {
+    fn from(err: std::io::Error) -> Self {
         CommandError::Error(err.to_string())
     }
 }

@@ -1,11 +1,11 @@
 use bumpalo::{Bump, collections::String as BumpString};
 use crossterm::{
-    queue,
+    QueueableCommand, queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
 use hdf5::types::{FloatSize, IntSize, Reference, TypeDescriptor};
 use lscolors::{Indicator, LsColors};
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::io::{Write, stderr, stdout};
 use term_grid::{Direction, Filling, Grid, GridOptions};
 
@@ -158,6 +158,13 @@ impl Printer {
         out
     }
 
+    pub fn queue_padding(&self, out: &mut impl Write, padding: usize) -> std::io::Result<()> {
+        if padding > 0 {
+            out.queue(Print(Padding(padding)))?;
+        }
+        Ok(())
+    }
+
     pub fn terminal_size(&self) -> (u16, u16) {
         crossterm::terminal::size().unwrap_or((48, 128))
     }
@@ -212,4 +219,13 @@ fn nu_ansi_term_style_for_indicator(
 
 fn terminal_width() -> usize {
     crossterm::terminal::window_size().map_or(96, |size| size.columns as usize)
+}
+
+const PADDING_BUFFER: &str = "                                    ";
+struct Padding(usize);
+
+impl Display for Padding {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(PADDING_BUFFER.get(0..self.0).unwrap_or(PADDING_BUFFER))
+    }
 }

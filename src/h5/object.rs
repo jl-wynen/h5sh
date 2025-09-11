@@ -1,8 +1,8 @@
-use hdf5::{H5Type, LocationType};
-use ndarray::{Array, IxDyn, s};
-
 use crate::h5::Result;
 use crate::h5::{H5Error, H5Path};
+use hdf5::LocationType;
+use ndarray::{Array, IxDyn};
+use std::ops::Deref;
 
 #[derive(Clone, Debug)]
 pub struct H5Dataset {
@@ -17,9 +17,15 @@ pub struct H5Group {
 }
 
 #[derive(Clone, Debug)]
+pub struct H5Attribute {
+    attribute: hdf5::Attribute,
+}
+
+#[derive(Clone, Debug)]
 pub enum H5Object {
     Dataset(H5Dataset),
     Group(H5Group),
+    Attribute(H5Attribute),
 }
 
 #[derive(Clone, Debug)]
@@ -52,29 +58,12 @@ impl H5Dataset {
         Ok(self.underlying().dtype()?.to_descriptor()?)
     }
 
-    pub fn ndim(&self) -> usize {
-        self.underlying().ndim()
+    pub fn attr_names(&self) -> Result<Vec<String>> {
+        Ok(self.underlying().attr_names()?)
     }
 
-    pub fn read<T: H5Type>(&self) -> Result<Array<T, IxDyn>> {
-        Ok(self.underlying().read()?)
-    }
-
-    pub fn read_first_n<T: H5Type>(&self, n: usize) -> Result<PartialData<T>> {
-        match self.underlying().shape()[..] {
-            [] => Ok(PartialData::Full(self.read()?)),
-            [size] => {
-                let array = self.underlying().read_slice(s![..(n.min(size))])?;
-                if n < size {
-                    Ok(PartialData::FirstN(array))
-                } else {
-                    Ok(PartialData::Full(array))
-                }
-            }
-            _ => Err(H5Error::Other(
-                "Reading first n elements is only supported for scalar and 1d data.".to_string(),
-            )),
-        }
+    pub fn attr(&self, name: &str) -> Result<H5Attribute> {
+        Ok(H5Attribute::from_underlying(self.underlying().attr(name)?))
     }
 }
 
@@ -96,6 +85,30 @@ impl H5Group {
 
     pub fn location_info(&self) -> hdf5::Result<hdf5::LocationInfo> {
         self.underlying().loc_info()
+    }
+
+    pub fn attr_names(&self) -> Result<Vec<String>> {
+        Ok(self.underlying().attr_names()?)
+    }
+
+    pub fn attr(&self, name: &str) -> Result<H5Attribute> {
+        Ok(H5Attribute::from_underlying(self.underlying().attr(name)?))
+    }
+}
+
+impl H5Attribute {
+    pub fn from_underlying(underlying: hdf5::Attribute) -> Self {
+        Self {
+            attribute: underlying,
+        }
+    }
+
+    pub fn underlying(&self) -> &hdf5::Attribute {
+        &self.attribute
+    }
+
+    pub fn name(&self) -> String {
+        self.underlying().name()
     }
 }
 
@@ -122,6 +135,7 @@ impl H5Object {
         match self {
             H5Object::Dataset(dataset) => dataset.path(),
             H5Object::Group(group) => group.path(),
+            H5Object::Attribute(_) => todo!("path"),
         }
     }
 
@@ -129,6 +143,7 @@ impl H5Object {
         match self {
             H5Object::Dataset(dataset) => dataset.location_info(),
             H5Object::Group(group) => group.location_info(),
+            H5Object::Attribute(_) => todo!("location info"),
         }
     }
 }
@@ -142,6 +157,22 @@ impl From<H5Dataset> for H5Object {
 impl From<H5Group> for H5Object {
     fn from(group: H5Group) -> Self {
         H5Object::Group(group)
+    }
+}
+
+impl Deref for H5Dataset {
+    type Target = hdf5::Container;
+
+    fn deref(&self) -> &Self::Target {
+        self.underlying()
+    }
+}
+
+impl Deref for H5Attribute {
+    type Target = hdf5::Container;
+
+    fn deref(&self) -> &Self::Target {
+        self.underlying()
     }
 }
 

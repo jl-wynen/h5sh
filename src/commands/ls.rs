@@ -8,7 +8,6 @@ use crossterm::{
     ExecutableCommand, QueueableCommand,
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
-use std::fmt::{Display, Formatter};
 use std::io::{Write, stdout};
 
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
@@ -34,6 +33,9 @@ impl Command for Ls {
             }
             dataset @ H5Object::Dataset(_) => {
                 print_objects(std::iter::once(dataset), shell.printer(), options);
+            }
+            H5Object::Attribute(_) => {
+                return Err(CommandError::Error("Is an attribute".to_string()));
             }
         }
         Ok(CommandOutcome::KeepRunning)
@@ -150,24 +152,25 @@ fn print_object_table(
         columns.push(content_column);
     }
 
-    print_table_columns(columns, &widths, n_rows)
+    print_table_columns(columns, &widths, n_rows, printer)
 }
 
 fn print_table_columns(
     columns: Vec<Column>,
     widths: &[usize],
     n_rows: usize,
+    printer: &Printer,
 ) -> std::io::Result<()> {
     let mut stdout = stdout();
     for i_row in 0..n_rows {
         for (i_col, (column, &width)) in Iterator::zip(columns.iter(), widths.iter()).enumerate() {
             let padding = width - column.widths[i_row];
             if !column.left_aligned {
-                queue_padding(&mut stdout, padding)?;
+                printer.queue_padding(&mut stdout, padding)?;
             }
             stdout.queue(Print(column.formatted[i_row].as_str()))?;
             if column.left_aligned {
-                queue_padding(&mut stdout, padding)?;
+                printer.queue_padding(&mut stdout, padding)?;
             }
             if i_col < columns.len() - 1 {
                 stdout.queue(Print(' '))?;
@@ -176,13 +179,6 @@ fn print_table_columns(
         stdout.queue(Print('\n'))?;
     }
     stdout.flush()
-}
-
-fn queue_padding(out: &mut impl Write, padding: usize) -> std::io::Result<()> {
-    if padding > 0 {
-        out.queue(Print(Padding(padding)))?;
-    }
-    Ok(())
 }
 
 struct Column<'alloc> {
@@ -230,6 +226,9 @@ fn format_object_name<'alloc>(
             formatted.push('/');
             formatted
         }
+        H5Object::Attribute(_) => {
+            todo!("object name")
+        }
     }
 }
 
@@ -264,6 +263,9 @@ fn build_size_column<'alloc>(
                 column.widths.push(0);
                 column.formatted.push(BumpString::new_in(bump));
             }
+            H5Object::Attribute(_) => {
+                todo!("size column")
+            }
         }
     }
     Ok(column)
@@ -281,7 +283,7 @@ fn build_shape_column<'alloc>(
     for (_, object) in objects {
         match object {
             H5Object::Dataset(dataset) => {
-                let shape = dataset.underlying().shape();
+                let shape = dataset.shape();
                 let (width, formatted) = format_shape(&shape, bump)?;
                 column.widths.push(width);
                 column.formatted.push(formatted);
@@ -289,6 +291,10 @@ fn build_shape_column<'alloc>(
             H5Object::Group(_) => {
                 column.widths.push(0);
                 column.formatted.push(BumpString::new_in(bump));
+            }
+
+            H5Object::Attribute(_) => {
+                todo!("shape column")
             }
         }
     }
@@ -349,6 +355,9 @@ fn build_dtype_column<'alloc>(
                 column.widths.push(3);
                 column.formatted.push(BumpString::from_str_in("grp", bump));
             }
+            H5Object::Attribute(_) => {
+                todo!("dtype column")
+            }
         }
     }
     Ok(column)
@@ -407,6 +416,9 @@ fn build_content_column<'alloc>(
                 column.widths.push(0);
                 column.formatted.push(BumpString::new_in(bump));
             }
+            H5Object::Attribute(_) => {
+                todo!("content column")
+            }
         }
     }
     Ok(column)
@@ -452,15 +464,6 @@ fn data_failure_message(bump: &Bump) -> std::io::Result<BumpString> {
         .execute(Print("Failed to load data"))?
         .execute(ResetColor)?;
     Ok(BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump)))
-}
-
-const PADDING_BUFFER: &str = "                                    ";
-struct Padding(usize);
-
-impl Display for Padding {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(PADDING_BUFFER.get(0..self.0).unwrap_or(PADDING_BUFFER))
-    }
 }
 
 fn sort_objects(objects: &mut Vec<(&str, &H5Object)>, sort_by: SortBy) {

@@ -1,9 +1,8 @@
-use log::info;
-use std::path::PathBuf;
-
 use super::error::{H5Error, Result};
 use super::object::{H5Dataset, H5Group, H5Object};
 use super::path::H5Path;
+use log::info;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct H5File {

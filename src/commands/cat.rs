@@ -20,6 +20,9 @@ impl Command for Cat {
             Ok(object) => match object {
                 H5Object::Group(_) => Err(CommandError::Error(format!("Is a group: {full_path}"))),
                 H5Object::Dataset(dataset) => cat_dataset(dataset, shell.printer()),
+                H5Object::Attribute(_) => {
+                    Err(CommandError::Error(format!("Is an attribute: {full_path}")))
+                }
             },
             Err(err) => Err(err.into()),
         }
