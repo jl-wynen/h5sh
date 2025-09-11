@@ -1,3 +1,5 @@
+use crate::h5::{self, PartialData};
+use crate::output::Printer;
 use bumpalo::{Bump, collections::String as BumpString};
 use crossterm::{
     ExecutableCommand,
@@ -5,40 +7,38 @@ use crossterm::{
 };
 use hdf5::{H5Type, types::TypeDescriptor};
 use std::fmt::Display;
-
-use crate::h5::{self, H5Dataset, PartialData};
-use crate::output::Printer;
+use std::ops::Deref;
 
 pub fn load_and_format_data<'alloc>(
-    dataset: &H5Dataset,
+    container: &impl Deref<Target = hdf5::Container>,
     max_elem: Option<usize>,
     max_width: Option<usize>,
     printer: &Printer,
     bump: &'alloc Bump,
 ) -> h5::Result<BumpString<'alloc>> {
-    match dataset.type_descriptor()? {
+    match container.dtype()?.to_descriptor()? {
         TypeDescriptor::VarLenUnicode => {
-            load_and_format::var_len_unicode(dataset, max_elem, max_width, bump)
+            load_and_format::var_len_unicode(container, max_elem, max_width, bump)
         }
         TypeDescriptor::VarLenAscii => {
-            load_and_format::var_len_ascii(dataset, max_elem, max_width, bump)
+            load_and_format::var_len_ascii(container, max_elem, max_width, bump)
         }
         TypeDescriptor::FixedUnicode(n) => {
-            load_and_format::fixed_len_unicode(dataset, n, max_elem, max_width, bump)
+            load_and_format::fixed_len_unicode(container, n, max_elem, max_width, bump)
         }
         TypeDescriptor::FixedAscii(n) => {
-            load_and_format::fixed_len_ascii(dataset, n, max_elem, max_width, bump)
+            load_and_format::fixed_len_ascii(container, n, max_elem, max_width, bump)
         }
         TypeDescriptor::Float(float_size) => {
-            load_and_format::float(dataset, float_size, max_elem, max_width, bump)
+            load_and_format::float(container, float_size, max_elem, max_width, bump)
         }
         TypeDescriptor::Integer(int_size) => {
-            load_and_format::signed_integer(dataset, int_size, max_elem, max_width, bump)
+            load_and_format::signed_integer(container, int_size, max_elem, max_width, bump)
         }
         TypeDescriptor::Unsigned(int_size) => {
-            load_and_format::unsigned_integer(dataset, int_size, max_elem, max_width, bump)
+            load_and_format::unsigned_integer(container, int_size, max_elem, max_width, bump)
         }
-        TypeDescriptor::Boolean => load_and_format::bool(dataset, max_elem, max_width, bump),
+        TypeDescriptor::Boolean => load_and_format::bool(container, max_elem, max_width, bump),
         descriptor => Err(h5::H5Error::Other(format!(
             "dtype not supported: {}",
             printer.format_dtype(&descriptor, bump)
@@ -51,27 +51,28 @@ mod load_and_format {
     use crate::h5::H5Error;
 
     use hdf5::types::{FixedAscii, FixedUnicode, FloatSize, IntSize, VarLenAscii, VarLenUnicode};
+    use ndarray::{IxDyn, s};
 
     pub(super) fn var_len_unicode<'alloc>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         max_elem: Option<usize>,
         max_width: Option<usize>,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
-        load_and_format::<VarLenUnicode>(dataset, max_elem, max_width, bump)
+        load_and_format::<VarLenUnicode>(container, max_elem, max_width, bump)
     }
 
     pub(super) fn var_len_ascii<'alloc>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         max_elem: Option<usize>,
         max_width: Option<usize>,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
-        load_and_format::<VarLenAscii>(dataset, max_elem, max_width, bump)
+        load_and_format::<VarLenAscii>(container, max_elem, max_width, bump)
     }
 
     pub(super) fn fixed_len_unicode<'alloc>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         n: usize,
         max_elem: Option<usize>,
         max_width: Option<usize>,
@@ -83,11 +84,11 @@ mod load_and_format {
                 "Can only read fixed-length strings of up to {MAX_N} bytes"
             )));
         }
-        load_and_format::<FixedUnicode<MAX_N>>(dataset, max_elem, max_width, bump)
+        load_and_format::<FixedUnicode<MAX_N>>(container, max_elem, max_width, bump)
     }
 
     pub(super) fn fixed_len_ascii<'alloc>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         n: usize,
         max_elem: Option<usize>,
         max_width: Option<usize>,
@@ -99,67 +100,67 @@ mod load_and_format {
                 "Can only read fixed-length strings of up to {MAX_N} bytes"
             )));
         }
-        load_and_format::<FixedAscii<MAX_N>>(dataset, max_elem, max_width, bump)
+        load_and_format::<FixedAscii<MAX_N>>(container, max_elem, max_width, bump)
     }
 
     pub(super) fn float<'alloc>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         float_size: FloatSize,
         max_elem: Option<usize>,
         max_width: Option<usize>,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
         match float_size {
-            FloatSize::U8 => load_and_format::<f64>(dataset, max_elem, max_width, bump),
-            FloatSize::U4 => load_and_format::<f32>(dataset, max_elem, max_width, bump),
+            FloatSize::U8 => load_and_format::<f64>(container, max_elem, max_width, bump),
+            FloatSize::U4 => load_and_format::<f32>(container, max_elem, max_width, bump),
             // f16 is unstable, so approximate using f32
-            FloatSize::U2 => load_and_format::<f32>(dataset, max_elem, max_width, bump),
+            FloatSize::U2 => load_and_format::<f32>(container, max_elem, max_width, bump),
         }
     }
 
     pub(super) fn signed_integer<'alloc>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         int_size: IntSize,
         max_elem: Option<usize>,
         max_width: Option<usize>,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
         match int_size {
-            IntSize::U8 => load_and_format::<i64>(dataset, max_elem, max_width, bump),
-            IntSize::U4 => load_and_format::<i32>(dataset, max_elem, max_width, bump),
-            IntSize::U2 => load_and_format::<i16>(dataset, max_elem, max_width, bump),
-            IntSize::U1 => load_and_format::<i8>(dataset, max_elem, max_width, bump),
+            IntSize::U8 => load_and_format::<i64>(container, max_elem, max_width, bump),
+            IntSize::U4 => load_and_format::<i32>(container, max_elem, max_width, bump),
+            IntSize::U2 => load_and_format::<i16>(container, max_elem, max_width, bump),
+            IntSize::U1 => load_and_format::<i8>(container, max_elem, max_width, bump),
         }
     }
 
     pub(super) fn unsigned_integer<'alloc>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         int_size: IntSize,
         max_elem: Option<usize>,
         max_width: Option<usize>,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
         match int_size {
-            IntSize::U8 => load_and_format::<u64>(dataset, max_elem, max_width, bump),
-            IntSize::U4 => load_and_format::<u32>(dataset, max_elem, max_width, bump),
-            IntSize::U2 => load_and_format::<u16>(dataset, max_elem, max_width, bump),
-            IntSize::U1 => load_and_format::<u8>(dataset, max_elem, max_width, bump),
+            IntSize::U8 => load_and_format::<u64>(container, max_elem, max_width, bump),
+            IntSize::U4 => load_and_format::<u32>(container, max_elem, max_width, bump),
+            IntSize::U2 => load_and_format::<u16>(container, max_elem, max_width, bump),
+            IntSize::U1 => load_and_format::<u8>(container, max_elem, max_width, bump),
         }
     }
 
     pub(super) fn bool<'alloc>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         max_elem: Option<usize>,
         max_width: Option<usize>,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
-        load_and_format::<bool>(dataset, max_elem, max_width, bump)
+        load_and_format::<bool>(container, max_elem, max_width, bump)
     }
 
     // Note that the max_width handling assumes that
     // the formatted array contains no escape sequences.
     fn load_and_format<'alloc, T: H5Type + Display>(
-        dataset: &H5Dataset,
+        container: &impl Deref<Target = hdf5::Container>,
         max_elem: Option<usize>,
         max_width: Option<usize>,
         bump: &'alloc Bump,
@@ -167,9 +168,9 @@ mod load_and_format {
         use std::fmt::Write;
 
         let content = if let Some(max_elem) = max_elem {
-            dataset.read_first_n::<T>(max_elem)
+            read_first_n::<T>(container, max_elem)
         } else {
-            dataset.read::<T>().map(PartialData::Full)
+            Ok(container.read::<T, IxDyn>().map(PartialData::Full)?)
         }?;
 
         let mut out = BumpString::new_in(bump);
@@ -213,5 +214,25 @@ mod load_and_format {
             buffer.execute(ResetColor).unwrap();
             String::from_utf8(buffer).unwrap()
         };
+    }
+
+    fn read_first_n<T: H5Type>(
+        container: &impl Deref<Target = hdf5::Container>,
+        n: usize,
+    ) -> h5::Result<PartialData<T>> {
+        match container.shape()[..] {
+            [] => Ok(PartialData::Full(container.read()?)),
+            [size] => {
+                let array = container.read_slice(s![..(n.min(size))])?;
+                if n < size {
+                    Ok(PartialData::FirstN(array))
+                } else {
+                    Ok(PartialData::Full(array))
+                }
+            }
+            _ => Err(H5Error::Other(
+                "Reading first n elements is only supported for scalar and 1d data.".to_string(),
+            )),
+        }
     }
 }

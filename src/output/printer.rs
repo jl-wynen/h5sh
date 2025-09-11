@@ -1,15 +1,16 @@
 use bumpalo::{Bump, collections::String as BumpString};
 use crossterm::{
-    queue,
+    QueueableCommand, queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
 use hdf5::types::{FloatSize, IntSize, Reference, TypeDescriptor};
 use lscolors::{Indicator, LsColors};
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::io::{Write, stderr, stdout};
 use term_grid::{Direction, Filling, Grid, GridOptions};
 
 use crate::cmd::CommandError;
+use crate::h5::H5Object;
 
 pub struct Printer {
     style: Style,
@@ -79,6 +80,31 @@ impl Printer {
         let _ = stderr.flush();
     }
 
+    pub fn format_object_name<'alloc>(
+        &self,
+        name: &str,
+        object: &H5Object,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        match object {
+            H5Object::Dataset(_) => {
+                let mut formatted = self.apply_style_dataset_in(name, bump);
+                formatted.push(' ');
+                formatted
+            }
+            H5Object::Group(_) => {
+                let mut formatted = self.apply_style_group_in(name, bump);
+                formatted.push('/');
+                formatted
+            }
+            H5Object::Attribute(_) => {
+                let mut formatted = self.apply_style_attribute_in(name, bump);
+                formatted.insert(0, '@');
+                formatted
+            }
+        }
+    }
+
     pub fn apply_style_dataset_in<'alloc>(
         &self,
         value: &str,
@@ -93,6 +119,14 @@ impl Printer {
         bump: &'alloc Bump,
     ) -> BumpString<'alloc> {
         self.style.apply_group_in(value, bump)
+    }
+
+    pub fn apply_style_attribute_in<'alloc>(
+        &self,
+        value: &str,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        self.style.apply_attribute_in(value, bump)
     }
 
     pub fn format_human_size_in<'alloc>(
@@ -158,6 +192,22 @@ impl Printer {
         out
     }
 
+    pub fn queue_object_table<'q, Q: Write>(
+        &self,
+        queue: &'q mut Q,
+        objects: &[(&str, &H5Object)],
+        show_content: bool,
+    ) -> std::io::Result<&'q mut Q> {
+        super::table::queue_object_table(queue, objects, self, show_content)
+    }
+
+    pub fn queue_padding(&self, out: &mut impl Write, padding: usize) -> std::io::Result<()> {
+        if padding > 0 {
+            out.queue(Print(Padding(padding)))?;
+        }
+        Ok(())
+    }
+
     pub fn terminal_size(&self) -> (u16, u16) {
         crossterm::terminal::size().unwrap_or((48, 128))
     }
@@ -173,6 +223,7 @@ struct Style {
     // so we don't need crossterm compatibility.
     dataset: nu_ansi_term::Style,
     group: nu_ansi_term::Style,
+    attribute: nu_ansi_term::Style,
 }
 
 impl Style {
@@ -181,6 +232,7 @@ impl Style {
         Self {
             dataset: nu_ansi_term_style_for_indicator(&ls_colors, Indicator::RegularFile),
             group: nu_ansi_term_style_for_indicator(&ls_colors, Indicator::Directory),
+            attribute: nu_ansi_term::Style::from(nu_ansi_term::Color::Cyan),
         }
     }
 
@@ -190,6 +242,10 @@ impl Style {
 
     fn apply_group_in<'alloc>(&self, value: &str, bump: &'alloc Bump) -> BumpString<'alloc> {
         self.apply_in(self.group.paint(value), bump)
+    }
+
+    fn apply_attribute_in<'alloc>(&self, value: &str, bump: &'alloc Bump) -> BumpString<'alloc> {
+        self.apply_in(self.attribute.paint(value), bump)
     }
 
     fn apply_in<'alloc>(&self, painted: impl Display, bump: &'alloc Bump) -> BumpString<'alloc> {
@@ -212,4 +268,13 @@ fn nu_ansi_term_style_for_indicator(
 
 fn terminal_width() -> usize {
     crossterm::terminal::window_size().map_or(96, |size| size.columns as usize)
+}
+
+const PADDING_BUFFER: &str = "                                    ";
+struct Padding(usize);
+
+impl Display for Padding {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(PADDING_BUFFER.get(0..self.0).unwrap_or(PADDING_BUFFER))
+    }
 }

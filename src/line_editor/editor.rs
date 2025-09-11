@@ -139,7 +139,7 @@ impl<'f> Completer for Hinter<'f> {
                     matches!(object, H5Object::Group(_)),
                 ))
             })),
-            H5Object::Dataset(_) => Err(H5Error::Other("Not a group".into())),
+            _ => Err(H5Error::Other("Not a group".into())),
         };
 
         let mut file_cache = self.file_cache.borrow_mut();
