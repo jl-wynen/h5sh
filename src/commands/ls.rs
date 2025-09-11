@@ -220,7 +220,11 @@ fn format_object_name<'alloc>(
     bump: &'alloc Bump,
 ) -> BumpString<'alloc> {
     match object {
-        H5Object::Dataset(_) => printer.apply_style_dataset_in(name, bump),
+        H5Object::Dataset(_) => {
+            let mut formatted = printer.apply_style_dataset_in(name, bump);
+            formatted.push(' ');
+            formatted
+        }
         H5Object::Group(_) => {
             let mut formatted = printer.apply_style_group_in(name, bump);
             formatted.push('/');
