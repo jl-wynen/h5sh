@@ -20,7 +20,7 @@ impl Command for Ls {
 
         match file.load(&target)? {
             H5Object::Group(group) => {
-                print_objects(file.load_children(group)?, shell.printer(), options);
+                print_objects(group.load_children()?.into_iter(), shell.printer(), options);
             }
             dataset @ H5Object::Dataset(_) => {
                 print_objects(std::iter::once(dataset), shell.printer(), options);

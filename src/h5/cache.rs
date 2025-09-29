@@ -222,6 +222,10 @@ impl CacheValue {
         })
     }
 
+    pub fn from_location_info(location_info: hdf5::LocationInfo) -> Self {
+        Self { location_info }
+    }
+
     pub fn location_token(&self) -> &hdf5::LocationToken {
         &self.location_info.token
     }

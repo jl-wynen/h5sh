@@ -128,19 +128,22 @@ impl<'f> Completer for Hinter<'f> {
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let expression = Parser::new(line).parse();
 
-        let child_loader = move |parent: &CacheValue| match self
-            .file
-            .load(*parent.location_token())?
-        {
-            H5Object::Group(group) => Ok(self.file.load_children(group)?.filter_map(|object| {
-                Some((
-                    object.path().clone(),
-                    CacheValue::from_h5object(&object).ok()?,
-                    matches!(object, H5Object::Group(_)),
-                ))
-            })),
-            _ => Err(H5Error::Other("Not a group".into())),
-        };
+        let child_loader =
+            move |parent: &CacheValue| match self.file.load(*parent.location_token())? {
+                H5Object::Group(group) => {
+                    Ok(group
+                        .load_child_locations()?
+                        .into_iter()
+                        .map(|(path, location_info)| {
+                            (
+                                path,
+                                CacheValue::from_location_info(location_info),
+                                matches!(location_info.loc_type, hdf5::LocationType::Group),
+                            )
+                        }))
+                }
+                _ => Err(H5Error::Other("Not a group".into())),
+            };
 
         let mut file_cache = self.file_cache.borrow_mut();
 

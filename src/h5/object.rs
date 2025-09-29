@@ -1,6 +1,5 @@
-use crate::h5::Result;
-use crate::h5::{H5Error, H5Path};
-use hdf5::LocationType;
+use crate::h5::{H5Error, H5Path, Result};
+use hdf5::{LocationInfo, LocationType};
 use ndarray::{Array, IxDyn};
 use std::ops::Deref;
 
@@ -35,9 +34,9 @@ pub enum PartialData<T> {
 }
 
 impl H5Dataset {
-    pub fn from_underlying(underlying: hdf5::Dataset) -> Self {
+    pub fn from_underlying_with_path(underlying: hdf5::Dataset, path: H5Path) -> Self {
         Self {
-            path: underlying.name().into(),
+            path,
             dataset: underlying,
         }
     }
@@ -50,7 +49,7 @@ impl H5Dataset {
         &self.path
     }
 
-    pub fn location_info(&self) -> hdf5::Result<hdf5::LocationInfo> {
+    pub fn location_info(&self) -> hdf5::Result<LocationInfo> {
         self.underlying().loc_info()
     }
 
@@ -64,9 +63,9 @@ impl H5Dataset {
 }
 
 impl H5Group {
-    pub fn from_underlying(underlying: hdf5::Group) -> Self {
+    pub fn from_underlying_with_path(underlying: hdf5::Group, path: H5Path) -> Self {
         Self {
-            path: underlying.name().into(),
+            path,
             group: underlying,
         }
     }
@@ -79,7 +78,7 @@ impl H5Group {
         &self.path
     }
 
-    pub fn location_info(&self) -> hdf5::Result<hdf5::LocationInfo> {
+    pub fn location_info(&self) -> hdf5::Result<LocationInfo> {
         self.underlying().loc_info()
     }
 
@@ -89,6 +88,44 @@ impl H5Group {
 
     pub fn attr(&self, name: &str) -> Result<H5Attribute> {
         Ok(H5Attribute::from_underlying(self.underlying().attr(name)?))
+    }
+
+    pub fn load_children(&self) -> Result<Vec<H5Object>> {
+        fn load_child(parent: &hdf5::Group, name: &str) -> Result<H5Object> {
+            match parent.loc_type_by_name(name)? {
+                LocationType::Dataset => Ok(H5Dataset::from_underlying_with_path(
+                    parent.dataset(name)?,
+                    name.into(),
+                )
+                .into()),
+                LocationType::Group => {
+                    Ok(H5Group::from_underlying_with_path(parent.group(name)?, name.into()).into())
+                }
+                _ => Err(H5Error::Other("unsupported location type: ".into())),
+            }
+        }
+
+        Ok(self
+            .underlying()
+            .iter_visit_default(Vec::new(), |group, name, _, children| {
+                if let Ok(child) = load_child(group, name) {
+                    children.push(child);
+                }
+                // Skip errors. We have no good way of reporting errors here.
+                true
+            })?)
+    }
+
+    pub fn load_child_locations(&self) -> Result<Vec<(H5Path, LocationInfo)>> {
+        Ok(self
+            .underlying()
+            .iter_visit_default(Vec::new(), |group, name, _, children| {
+                if let Ok(info) = group.loc_info_by_name(name) {
+                    children.push((self.path.join(&H5Path::from(name)), info));
+                }
+                // Skip errors. We have no good way of reporting errors here.
+                true
+            })?)
     }
 }
 

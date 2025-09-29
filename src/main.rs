@@ -35,9 +35,6 @@ fn open_file(args: cli::OpenArgs) -> ExitCode {
         }
     };
 
-    // h5file.explore_attrs();
-    // return ExitCode::SUCCESS;
-
     let Ok(mut editor) = shell.start_editor(&h5file) else {
         shell.printer().print_shell_error("Failed to start editor");
         return ExitCode::FAILURE;

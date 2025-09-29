@@ -1,5 +1,5 @@
 use super::error::{H5Error, Result};
-use super::object::{H5Dataset, H5Group, H5Object};
+use super::object::H5Object;
 use super::path::H5Path;
 use log::info;
 use std::path::PathBuf;
@@ -23,19 +23,6 @@ impl H5File {
     pub fn load<L: LocationSpec>(&self, location: L) -> Result<H5Object> {
         let location = location.into_location(&self.file)?;
         H5Object::from_location(H5Path::from(location.name()), &location)
-    }
-
-    pub fn load_children(&self, group: H5Group) -> Result<impl Iterator<Item = H5Object>> {
-        let group = group.underlying();
-        let groups = group
-            .groups()?
-            .into_iter()
-            .map(|group| H5Group::from_underlying(group).into());
-        let datasets = group
-            .datasets()?
-            .into_iter()
-            .map(|dataset| H5Dataset::from_underlying(dataset).into());
-        Ok(groups.chain(datasets))
     }
 }
 
