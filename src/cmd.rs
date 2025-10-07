@@ -24,11 +24,13 @@ impl Commands {
         cmds.insert("cd".to_string(), Rc::new(commands::Cd));
         cmds.insert("cat".to_string(), Rc::new(commands::Cat));
         cmds.insert("exit".to_string(), Rc::new(commands::Exit));
+        cmds.insert("find".to_string(), Rc::new(commands::Find));
         cmds.insert("help".to_string(), Rc::new(commands::Help));
         cmds.insert("ls".to_string(), Rc::new(commands::Ls));
         cmds.insert("pwd".to_string(), Rc::new(commands::Pwd));
 
         let mut aliases = IndexMap::new();
+        aliases.insert("fd".to_string(), "find".to_string());
         aliases.insert("l".to_string(), "ls -l".to_string());
         aliases.insert("..".to_string(), "cd ..".to_string());
         aliases.insert("...".to_string(), "cd ../..".to_string());
