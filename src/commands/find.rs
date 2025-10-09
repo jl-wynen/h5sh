@@ -9,6 +9,7 @@ use crossterm::{
     QueueableCommand,
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
+use regex::Regex;
 use std::io::{Write, stdout};
 use std::str::FromStr;
 
@@ -58,10 +59,10 @@ struct Arguments {
     recursive: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 enum Pattern {
-    Name(String),
-    Attr { name: String, value: Option<String> },
+    Name(Regex),
+    Attr { name: Regex, value: Option<Regex> },
 }
 
 fn find(file: &H5File, target: H5Path, pattern: Pattern, printer: &Printer) -> CmdResult {
@@ -117,7 +118,7 @@ fn format_name_in<'alloc>(
 impl Pattern {
     fn matches(&self, text: &str) -> bool {
         match self {
-            Pattern::Name(name) => text.contains(name),
+            Pattern::Name(name) => name.is_match(text),
             Pattern::Attr { name, value } => {
                 todo!("attr matching")
             }
@@ -126,26 +127,23 @@ impl Pattern {
 }
 
 impl FromStr for Pattern {
-    type Err = String;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(s) = s.strip_prefix('@') {
             let mut parts = s.splitn(2, '=');
-            let name = parts
-                .next()
-                .ok_or_else(|| "Bad pattern".to_string())?
-                .to_string();
+            let name = Regex::new(parts.next().ok_or_else(|| anyhow::anyhow!("Bad pattern"))?)?;
 
             if let Some(value) = parts.next() {
                 Ok(Pattern::Attr {
                     name,
-                    value: Some(value.to_string()),
+                    value: Some(Regex::new(value)?),
                 })
             } else {
                 Ok(Pattern::Attr { name, value: None })
             }
         } else {
-            Ok(Pattern::Name(s.to_string()))
+            Ok(Pattern::Name(Regex::new(s)?))
         }
     }
 }
@@ -165,122 +163,115 @@ mod tests {
         .unwrap()
     }
 
+    fn assert_pattern_name(pattern: &Pattern, expected: &str) {
+        match pattern {
+            Pattern::Name(name) => {
+                assert_eq!(name.as_str(), expected);
+            }
+            _ => {
+                panic!("expected a Name pattern, got Attr")
+            }
+        }
+    }
+
+    fn assert_pattern_attr_key(pattern: &Pattern, expected: &str) {
+        match pattern {
+            Pattern::Attr { name, value } => {
+                assert_eq!(name.as_str(), expected);
+                assert!(value.is_none());
+            }
+            _ => {
+                panic!("expected an Attr pattern, got Name")
+            }
+        }
+    }
+
+    fn assert_pattern_attr_key_value(pattern: &Pattern, expected_name: &str, expected_value: &str) {
+        match pattern {
+            Pattern::Attr { name, value } => {
+                assert_eq!(name.as_str(), expected_name);
+                assert_eq!(value.as_ref().unwrap().as_str(), expected_value);
+            }
+            _ => {
+                panic!("expected an Attr pattern, got Name")
+            }
+        }
+    }
+
     #[test]
     fn parse_pattern_name() {
         let args = parse_args(&["some_name"]);
-        assert_eq!(args.pattern, Pattern::Name("some_name".to_string()));
+        assert_pattern_name(&args.pattern, "some_name");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_name_with_target() {
         let args = parse_args(&["needle", "farm/barn"]);
-        assert_eq!(args.pattern, Pattern::Name("needle".to_string()));
+        assert_pattern_name(&args.pattern, "needle");
         assert_eq!(args.target, H5Path::from("farm/barn"));
     }
 
     #[test]
     fn parse_pattern_name_with_equal() {
         let args = parse_args(&["a=b"]);
-        assert_eq!(args.pattern, Pattern::Name("a=b".to_string()));
+        assert_pattern_name(&args.pattern, "a=b");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_name_with_trailing_equal() {
         let args = parse_args(&["name="]);
-        assert_eq!(args.pattern, Pattern::Name("name=".to_string()));
+        assert_pattern_name(&args.pattern, "name=");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_attribute_name() {
         let args = parse_args(&["@key"]);
-        assert_eq!(
-            args.pattern,
-            Pattern::Attr {
-                name: "key".to_string(),
-                value: None
-            }
-        );
+        assert_pattern_attr_key(&args.pattern, "key");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_attribute_with_value() {
         let args = parse_args(&["@abc=2hs"]);
-        assert_eq!(
-            args.pattern,
-            Pattern::Attr {
-                name: "abc".to_string(),
-                value: Some("2hs".to_string())
-            }
-        );
+        assert_pattern_attr_key_value(&args.pattern, "abc", "2hs");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_attribute_with_value_extra_equal() {
         let args = parse_args(&["@asd=qwe=zxc"]);
-        assert_eq!(
-            args.pattern,
-            Pattern::Attr {
-                name: "asd".to_string(),
-                value: Some("qwe=zxc".to_string())
-            }
-        );
+        assert_pattern_attr_key_value(&args.pattern, "asd", "qwe=zxc");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_attribute_with_value_trailing_equal() {
         let args = parse_args(&["@asd=qwe="]);
-        assert_eq!(
-            args.pattern,
-            Pattern::Attr {
-                name: "asd".to_string(),
-                value: Some("qwe=".to_string())
-            }
-        );
+        assert_pattern_attr_key_value(&args.pattern, "asd", "qwe=");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_attribute_with_empty_value() {
         let args = parse_args(&["@abc="]);
-        assert_eq!(
-            args.pattern,
-            Pattern::Attr {
-                name: "abc".to_string(),
-                value: Some("".to_string())
-            }
-        );
+        assert_pattern_attr_key_value(&args.pattern, "abc", "");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_attribute_without_key() {
         let args = parse_args(&["@=value"]);
-        assert_eq!(
-            args.pattern,
-            Pattern::Attr {
-                name: "".to_string(),
-                value: Some("value".to_string())
-            }
-        );
+        assert_pattern_attr_key_value(&args.pattern, "", "value");
         assert_eq!(args.target, H5Path::from("."));
     }
 
     #[test]
     fn parse_pattern_attribute_with_value_with_target() {
         let args = parse_args(&["@2_3=iU", "/entry/path/"]);
-        assert_eq!(
-            args.pattern,
-            Pattern::Attr {
-                name: "2_3".to_string(),
-                value: Some("iU".to_string())
-            }
-        );
+        assert_pattern_attr_key_value(&args.pattern, "2_3", "iU");
         assert_eq!(args.target, H5Path::from("/entry/path/"));
     }
 }
