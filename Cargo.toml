@@ -23,6 +23,7 @@ log = "0.4"
 lscolors = { version = "0.20" }
 ndarray = "0.16"
 nu-ansi-term = "0.50"
+regex = "1.11"
 rustyline = { version = "17", default-features = false, features = ["derive", "with-file-history"] }
 simple_logger = "5.0"
 self-replace = "1"
