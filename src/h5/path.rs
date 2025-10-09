@@ -14,6 +14,10 @@ impl H5Path {
         self.raw.starts_with("/")
     }
 
+    pub fn is_current(&self) -> bool {
+        self.raw == "."
+    }
+
     pub fn join(&self, other: &H5Path) -> H5Path {
         if other.is_absolute() {
             other.clone()
