@@ -22,7 +22,14 @@ impl Command for Find {
             return Err(CommandError::Critical("Failed to extract args".to_string()));
         };
         let target = shell.resolve_path(&args.target);
-        find(file, target, args.pattern, shell.printer())?;
+        match args.pattern {
+            Pattern::Name(name) => {
+                find_name(file, target, name, shell.printer())?;
+            }
+            Pattern::Attr { name, value } => {
+                todo!("attr matching")
+            }
+        }
         Ok(CommandOutcome::KeepRunning)
     }
 
@@ -65,20 +72,20 @@ enum Pattern {
     Attr { name: Regex, value: Option<Regex> },
 }
 
-fn find(file: &H5File, target: H5Path, pattern: Pattern, printer: &Printer) -> CmdResult {
+fn find_name(file: &H5File, target: H5Path, pattern: Regex, printer: &Printer) -> CmdResult {
     match file.load(&target)? {
-        H5Object::Group(group) => find_in_group(group, &pattern, printer),
-        H5Object::Dataset(dataset) => match_dataset(dataset, &pattern, printer),
+        H5Object::Group(group) => find_name_in_group(group, &pattern, printer),
+        H5Object::Dataset(dataset) => match_name_dataset(dataset, &pattern, printer),
         H5Object::Attribute(_) => Err(CommandError::Error("Is an attribute".to_string())),
     }
 }
 
-fn find_in_group(group: H5Group, pattern: &Pattern, printer: &Printer) -> CmdResult {
+fn find_name_in_group(group: H5Group, pattern: &Regex, printer: &Printer) -> CmdResult {
     let bump = Bump::new();
     let mut stdout = stdout();
     for (path, info) in group.load_child_locations()?.into_iter() {
         let name = path.name();
-        if !pattern.matches(name) {
+        if !regex_matches(pattern, name) {
             continue;
         }
         stdout
@@ -91,9 +98,9 @@ fn find_in_group(group: H5Group, pattern: &Pattern, printer: &Printer) -> CmdRes
     Ok(CommandOutcome::KeepRunning)
 }
 
-fn match_dataset(dataset: H5Dataset, pattern: &Pattern, printer: &Printer) -> CmdResult {
+fn match_name_dataset(dataset: H5Dataset, pattern: &Regex, printer: &Printer) -> CmdResult {
     let name = dataset.path().name();
-    if pattern.matches(name) {
+    if regex_matches(pattern, name) {
         let bump = Bump::new();
         printer.println(printer.apply_style_dataset_in(name, &bump));
     }
@@ -115,15 +122,8 @@ fn format_name_in<'alloc>(
     }
 }
 
-impl Pattern {
-    fn matches(&self, text: &str) -> bool {
-        match self {
-            Pattern::Name(name) => name.is_match(text),
-            Pattern::Attr { name, value } => {
-                todo!("attr matching")
-            }
-        }
-    }
+fn regex_matches(pattern: &Regex, text: &str) -> bool {
+    pattern.is_match(text)
 }
 
 impl FromStr for Pattern {
