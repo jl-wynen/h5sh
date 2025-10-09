@@ -1,16 +1,18 @@
-use bumpalo::{Bump, collections::String as BumpString};
+use super::Style;
+use crate::cmd::CommandError;
+use crate::h5::H5Object;
+use bumpalo::{
+    Bump,
+    collections::{String as BumpString, Vec as BumpVec},
+};
 use crossterm::{
-    QueueableCommand, queue,
-    style::{Color, Print, ResetColor, SetForegroundColor},
+    QueueableCommand, execute, queue,
+    style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
 };
 use hdf5::types::{FloatSize, IntSize, Reference, TypeDescriptor};
-use lscolors::{Indicator, LsColors};
 use std::fmt::{Display, Formatter};
 use std::io::{Write, stderr, stdout};
 use term_grid::{Direction, Filling, Grid, GridOptions};
-
-use crate::cmd::CommandError;
-use crate::h5::H5Object;
 
 pub struct Printer {
     style: Style,
@@ -86,47 +88,25 @@ impl Printer {
         object: &H5Object,
         bump: &'alloc Bump,
     ) -> BumpString<'alloc> {
-        match object {
-            H5Object::Dataset(_) => {
-                let mut formatted = self.apply_style_dataset_in(name, bump);
-                formatted.push(' ');
-                formatted
-            }
-            H5Object::Group(_) => {
-                let mut formatted = self.apply_style_group_in(name, bump);
-                formatted.push('/');
-                formatted
-            }
-            H5Object::Attribute(_) => {
-                let mut formatted = self.apply_style_attribute_in(name, bump);
-                formatted.insert(0, '@');
-                formatted
-            }
-        }
+        let mut buffer = BumpVec::<u8>::new_in(bump);
+        let (style, character) = match object {
+            H5Object::Dataset(_) => (&self.style().dataset, ' '),
+            H5Object::Group(_) => (&self.style().group, '/'),
+            H5Object::Attribute(_) => (&self.style().attribute, '@'),
+        };
+        let _ = execute!(
+            buffer,
+            style,
+            Print(name),
+            ResetColor,
+            SetAttribute(Attribute::Reset),
+            Print(character),
+        );
+        BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump))
     }
 
-    pub fn apply_style_dataset_in<'alloc>(
-        &self,
-        value: &str,
-        bump: &'alloc Bump,
-    ) -> BumpString<'alloc> {
-        self.style.apply_dataset_in(value, bump)
-    }
-
-    pub fn apply_style_group_in<'alloc>(
-        &self,
-        value: &str,
-        bump: &'alloc Bump,
-    ) -> BumpString<'alloc> {
-        self.style.apply_group_in(value, bump)
-    }
-
-    pub fn apply_style_attribute_in<'alloc>(
-        &self,
-        value: &str,
-        bump: &'alloc Bump,
-    ) -> BumpString<'alloc> {
-        self.style.apply_attribute_in(value, bump)
+    pub fn style(&self) -> &Style {
+        &self.style
     }
 
     pub fn format_human_size_in<'alloc>(
@@ -215,56 +195,6 @@ impl Printer {
 
 const BYTE_UNITS_SHORT: [&str; 5] = ["B ", "Ki", "Mi", "Gi", "Ti"];
 const BYTE_UNITS_LONG: [&str; 5] = ["B  ", "KiB", "MiB", "GiB", "TiB"];
-
-struct Style {
-    // Use nu_ansi_term::Style for best compatibility with lscolors.
-    // (lscolors depends on an older version of crossterm.)
-    // We apply styles before passing values to crossterm anyway,
-    // so we don't need crossterm compatibility.
-    dataset: nu_ansi_term::Style,
-    group: nu_ansi_term::Style,
-    attribute: nu_ansi_term::Style,
-}
-
-impl Style {
-    fn new() -> Self {
-        let ls_colors = LsColors::from_env().unwrap_or_default();
-        Self {
-            dataset: nu_ansi_term_style_for_indicator(&ls_colors, Indicator::RegularFile),
-            group: nu_ansi_term_style_for_indicator(&ls_colors, Indicator::Directory),
-            attribute: nu_ansi_term::Style::from(nu_ansi_term::Color::Cyan),
-        }
-    }
-
-    fn apply_dataset_in<'alloc>(&self, value: &str, bump: &'alloc Bump) -> BumpString<'alloc> {
-        self.apply_in(self.dataset.paint(value), bump)
-    }
-
-    fn apply_group_in<'alloc>(&self, value: &str, bump: &'alloc Bump) -> BumpString<'alloc> {
-        self.apply_in(self.group.paint(value), bump)
-    }
-
-    fn apply_attribute_in<'alloc>(&self, value: &str, bump: &'alloc Bump) -> BumpString<'alloc> {
-        self.apply_in(self.attribute.paint(value), bump)
-    }
-
-    fn apply_in<'alloc>(&self, painted: impl Display, bump: &'alloc Bump) -> BumpString<'alloc> {
-        let mut formatted = BumpString::new_in(bump);
-        use std::fmt::Write;
-        let _ = write!(&mut formatted, "{painted}");
-        formatted
-    }
-}
-
-fn nu_ansi_term_style_for_indicator(
-    ls_colors: &LsColors,
-    indicator: Indicator,
-) -> nu_ansi_term::Style {
-    ls_colors
-        .style_for_indicator(indicator)
-        .map(lscolors::Style::to_nu_ansi_term_style)
-        .unwrap_or_default()
-}
 
 fn terminal_width() -> usize {
     crossterm::terminal::window_size().map_or(96, |size| size.columns as usize)
