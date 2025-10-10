@@ -69,8 +69,8 @@ impl crossterm::Command for Item {
 
     #[cfg(windows)]
     fn execute_winapi(&self) -> std::io::Result<()> {
-        SetColors(self.colors).execute_winapi();
-        SetAttributes(self.attributes).execute_winapi();
+        SetColors(self.colors).execute_winapi()?;
+        SetAttributes(self.attributes).execute_winapi()?;
         Ok(())
     }
 
