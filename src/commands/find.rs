@@ -1,12 +1,10 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
-use crate::h5::cache::Group;
-use crate::h5::{H5Dataset, H5File, H5Group, H5Object, H5Path};
+use crate::h5::{H5File, H5Group, H5Object, H5Path};
 use crate::output::{
     Printer,
     style::{DATASET_CHARACTER, GROUP_CHARACTER},
 };
 use crate::shell::Shell;
-use bumpalo::{Bump, collections::String as BumpString};
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser};
 use crossterm::{
     QueueableCommand,
@@ -134,36 +132,68 @@ fn write_matched_path<'q, Q: QueueableCommand>(
     location_type: hdf5::LocationType,
     printer: &Printer,
 ) -> std::io::Result<&'q mut Q> {
-    // TODO
-    let path = if target.is_current() {
-        path.clone()
+    let mut is_group_style = false;
+    if !target.is_current() {
+        queue.queue(&printer.style().group)?.queue(Print(target))?;
+        if !target.as_raw().ends_with('/') {
+            queue.queue(Print('/'))?;
+        }
+        is_group_style = true;
+    }
+
+    let name = path.name();
+    let raw = path.as_raw();
+    let path_includes_parent = raw.len() != name.len();
+
+    if (path_includes_parent || location_type == hdf5::LocationType::Group) && !is_group_style {
+        queue.queue(&printer.style().group)?;
+    }
+
+    let color_change = if path_includes_parent {
+        raw.len() - name.len()
+    } else if location_type == hdf5::LocationType::Group {
+        raw.len()
     } else {
-        target.join(path)
+        0
     };
 
-    let parent = path.parent();
-    let name = path.name();
-    queue
-        .queue(&printer.style().group)?
-        .queue(Print(parent))?
-        .queue(Print('/'))?;
-    let character = if location_type == hdf5::LocationType::Group {
+    if color_change <= mat.start() {
         queue
-            .queue(Print(name))?
+            .queue(Print(&raw[..color_change]))?
             .queue(ResetColor)?
             .queue(SetAttribute(Attribute::Reset))?;
-        GROUP_CHARACTER
+        queue_with_highlight_range(queue, &raw[color_change..], mat.range())?;
     } else {
+        queue_with_highlight_range(queue, &raw[..color_change], mat.range())?;
         queue
             .queue(ResetColor)?
             .queue(SetAttribute(Attribute::Reset))?
-            .queue(Print(name))?;
+            .queue(Print(&raw[color_change..]))?;
+    }
+
+    let character = if location_type == hdf5::LocationType::Group {
+        GROUP_CHARACTER
+    } else {
         DATASET_CHARACTER
     };
     if let Some(character) = character {
         queue.queue(Print(character))?;
     }
+
     queue.queue(Print('\n'))
+}
+
+fn queue_with_highlight_range<'q, Q: QueueableCommand>(
+    queue: &'q mut Q,
+    string: &str,
+    range: core::ops::Range<usize>,
+) -> std::io::Result<&'q mut Q> {
+    queue
+        .queue(Print(&string[..range.start]))?
+        .queue(SetAttribute(Attribute::Underlined))?
+        .queue(Print(&string[range.clone()]))?
+        .queue(SetAttribute(Attribute::NoUnderline))?
+        .queue(Print(&string[range.end..]))
 }
 
 impl FromStr for Pattern {
