@@ -1,15 +1,18 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
+use crate::h5::cache::Group;
 use crate::h5::{H5Dataset, H5File, H5Group, H5Object, H5Path};
-use crate::output::Printer;
+use crate::output::{
+    Printer,
+    style::{DATASET_CHARACTER, GROUP_CHARACTER},
+};
 use crate::shell::Shell;
 use bumpalo::{Bump, collections::String as BumpString};
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser};
-use crossterm::style::{Attribute, SetAttribute};
 use crossterm::{
     QueueableCommand,
-    style::{Color, Print, ResetColor, SetForegroundColor},
+    style::{Attribute, Print, ResetColor, SetAttribute},
 };
-use regex::Regex;
+use regex::{Match, Regex};
 use std::io::{Write, stdout};
 use std::str::FromStr;
 
@@ -21,10 +24,10 @@ impl Command for Find {
         let Ok(args) = Arguments::from_arg_matches(&args) else {
             return Err(CommandError::Critical("Failed to extract args".to_string()));
         };
-        let target = shell.resolve_path(&args.target);
+        let absolute_target = shell.resolve_path(&args.target);
         match args.pattern {
             Pattern::Name(name) => {
-                find_name(file, target, name, shell.printer())?;
+                find_name(file, args.target, absolute_target, name, shell.printer())?;
             }
             Pattern::Attr { name, value } => {
                 todo!("attr matching")
@@ -72,58 +75,95 @@ enum Pattern {
     Attr { name: Regex, value: Option<Regex> },
 }
 
-fn find_name(file: &H5File, target: H5Path, pattern: Regex, printer: &Printer) -> CmdResult {
-    match file.load(&target)? {
-        H5Object::Group(group) => find_name_in_group(group, &pattern, printer),
-        H5Object::Dataset(dataset) => match_name_dataset(dataset, &pattern, printer),
+fn find_name(
+    file: &H5File,
+    target: H5Path,
+    absolute_target: H5Path,
+    pattern: Regex,
+    printer: &Printer,
+) -> CmdResult {
+    match file.load(&absolute_target)? {
+        H5Object::Group(group) => {
+            find_name_in_group(group, target, absolute_target, &pattern, printer)
+        }
+        H5Object::Dataset(_) => match_name_dataset(target, &pattern, printer),
         H5Object::Attribute(_) => Err(CommandError::Error("Is an attribute".to_string())),
     }
 }
 
-fn find_name_in_group(group: H5Group, pattern: &Regex, printer: &Printer) -> CmdResult {
-    let bump = Bump::new();
+fn find_name_in_group(
+    group: H5Group,
+    target: H5Path,
+    absolute_target: H5Path,
+    pattern: &Regex,
+    printer: &Printer,
+) -> CmdResult {
     let mut stdout = stdout();
     for (path, info) in group.load_child_locations()?.into_iter() {
-        let name = path.name();
-        if !regex_matches(pattern, name) {
+        let path = path.relative_to(&absolute_target);
+        let Some(mat) = pattern.find(path.as_raw()) else {
             continue;
-        }
-        stdout
-            .queue(SetAttribute(Attribute::Underlined))?
-            .queue(Print(format_name_in(name, &info, printer, &bump)))?
-            .queue(SetAttribute(Attribute::Reset))?
-            .queue(Print("\n"))?;
+        };
+        write_matched_path(&mut stdout, &target, &path, mat, info.loc_type, printer)?;
     }
     stdout.flush()?;
     Ok(CommandOutcome::KeepRunning)
 }
 
-fn match_name_dataset(dataset: H5Dataset, pattern: &Regex, printer: &Printer) -> CmdResult {
-    let name = dataset.path().name();
-    if regex_matches(pattern, name) {
-        let bump = Bump::new();
-        printer.println(printer.apply_style_dataset_in(name, &bump));
-    }
+fn match_name_dataset(target: H5Path, pattern: &Regex, printer: &Printer) -> CmdResult {
+    if let Some(mat) = pattern.find(target.as_raw()) {
+        let mut stdout = stdout();
+        write_matched_path(
+            &mut stdout,
+            &H5Path::from("."),
+            &target,
+            mat,
+            hdf5::LocationType::Dataset,
+            printer,
+        )?;
+        stdout.flush()?;
+    };
     Ok(CommandOutcome::KeepRunning)
 }
 
-fn format_name_in<'alloc>(
-    name: &str,
-    location_info: &hdf5::LocationInfo,
+fn write_matched_path<'q, Q: QueueableCommand>(
+    queue: &'q mut Q,
+    target: &H5Path,
+    path: &H5Path,
+    mat: Match,
+    location_type: hdf5::LocationType,
     printer: &Printer,
-    bump: &'alloc Bump,
-) -> BumpString<'alloc> {
-    // TODO show symbol
-    // TODO highlight match
-    match location_info.loc_type {
-        hdf5::LocationType::Dataset => printer.apply_style_dataset_in(name, bump),
-        hdf5::LocationType::Group => printer.apply_style_group_in(name, bump),
-        _ => BumpString::from_str_in(name, bump), // should never happen
-    }
-}
+) -> std::io::Result<&'q mut Q> {
+    // TODO
+    let path = if target.is_current() {
+        path.clone()
+    } else {
+        target.join(path)
+    };
 
-fn regex_matches(pattern: &Regex, text: &str) -> bool {
-    pattern.is_match(text)
+    let parent = path.parent();
+    let name = path.name();
+    queue
+        .queue(&printer.style().group)?
+        .queue(Print(parent))?
+        .queue(Print('/'))?;
+    let character = if location_type == hdf5::LocationType::Group {
+        queue
+            .queue(Print(name))?
+            .queue(ResetColor)?
+            .queue(SetAttribute(Attribute::Reset))?;
+        GROUP_CHARACTER
+    } else {
+        queue
+            .queue(ResetColor)?
+            .queue(SetAttribute(Attribute::Reset))?
+            .queue(Print(name))?;
+        DATASET_CHARACTER
+    };
+    if let Some(character) = character {
+        queue.queue(Print(character))?;
+    }
+    queue.queue(Print('\n'))
 }
 
 impl FromStr for Pattern {
