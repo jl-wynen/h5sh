@@ -1,4 +1,5 @@
 use super::Style;
+use super::style::{ATTRIBUTE_CHARACTER, DATASET_CHARACTER, GROUP_CHARACTER};
 use crate::cmd::CommandError;
 use crate::h5::H5Object;
 use bumpalo::{
@@ -90,9 +91,9 @@ impl Printer {
     ) -> BumpString<'alloc> {
         let mut buffer = BumpVec::<u8>::new_in(bump);
         let (style, character) = match object {
-            H5Object::Dataset(_) => (&self.style().dataset, ' '),
-            H5Object::Group(_) => (&self.style().group, '/'),
-            H5Object::Attribute(_) => (&self.style().attribute, '@'),
+            H5Object::Dataset(_) => (&self.style().dataset, DATASET_CHARACTER),
+            H5Object::Group(_) => (&self.style().group, GROUP_CHARACTER),
+            H5Object::Attribute(_) => (&self.style().attribute, ATTRIBUTE_CHARACTER),
         };
         let _ = execute!(
             buffer,
@@ -100,8 +101,10 @@ impl Printer {
             Print(name),
             ResetColor,
             SetAttribute(Attribute::Reset),
-            Print(character),
         );
+        if let Some(character) = character {
+            let _ = execute!(buffer, Print(character));
+        }
         BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump))
     }
 

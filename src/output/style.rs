@@ -2,6 +2,10 @@ use crossterm::style::{Attribute, Attributes, Color, Colors, SetAttributes, SetC
 use lscolors::{Indicator, LsColors};
 use std::fmt::Write;
 
+pub const DATASET_CHARACTER: Option<char> = None;
+pub const GROUP_CHARACTER: Option<char> = Some('/');
+pub const ATTRIBUTE_CHARACTER: Option<char> = Some('@');
+
 #[derive(Debug)]
 pub struct Style {
     pub dataset: Item,

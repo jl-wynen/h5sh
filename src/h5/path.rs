@@ -72,10 +72,16 @@ impl H5Path {
     }
 
     pub fn resolve(&self) -> Self {
+        if self.raw == "." {
+            return self.clone();
+        }
+
         let mut segments = Vec::with_capacity(2);
         for segment in self.segments() {
             if segment == ".." {
                 segments.pop();
+            } else if segment == "." {
+                continue;
             } else if !segment.is_empty() {
                 segments.push(segment);
             }
@@ -253,6 +259,14 @@ mod tests {
     }
 
     #[test]
+    fn resolve_current_path() {
+        let path = H5Path::from(".".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from(".".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
     fn resolve_root_path() {
         let path = H5Path::from("/".to_string());
         let resolved = path.resolve();
@@ -321,6 +335,14 @@ mod tests {
         let path = H5Path::from("/a//b/c//..///d".to_string());
         let resolved = path.resolve();
         let expected = H5Path::from("/a/b/d".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_removes_dot() {
+        let path = H5Path::from("/a/./b/.".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/a/b".to_string());
         assert_eq!(resolved, expected);
     }
 
