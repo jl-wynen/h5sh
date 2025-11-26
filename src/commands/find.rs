@@ -1,5 +1,5 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
-use crate::h5::{H5File, H5Group, H5Object, H5Path};
+use crate::h5::{H5Dataset, H5File, H5Group, H5Object, H5Path};
 use crate::output::{
     Printer,
     style::{DATASET_CHARACTER, GROUP_CHARACTER},
@@ -7,11 +7,12 @@ use crate::output::{
 use crate::shell::Shell;
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser};
 use crossterm::{
-    QueueableCommand,
+    ExecutableCommand, QueueableCommand,
     style::{Attribute, Print, ResetColor, SetAttribute},
 };
 use regex::{Match, Regex};
 use std::io::{Write, stdout};
+use std::ops::Deref;
 use std::str::FromStr;
 
 #[derive(Clone, Copy, Default)]
@@ -28,7 +29,14 @@ impl Command for Find {
                 find_name(file, args.target, absolute_target, name, shell.printer())?;
             }
             Pattern::Attr { name, value } => {
-                todo!("attr matching")
+                find_attr(
+                    file,
+                    args.target,
+                    absolute_target,
+                    name,
+                    value,
+                    shell.printer(),
+                )?;
             }
         }
         Ok(CommandOutcome::KeepRunning)
@@ -181,6 +189,129 @@ fn write_matched_path<'q, Q: QueueableCommand>(
     }
 
     queue.queue(Print('\n'))
+}
+
+fn find_attr(
+    file: &H5File,
+    target: H5Path,
+    absolute_target: H5Path,
+    key: Regex,
+    value: Option<Regex>,
+    printer: &Printer,
+) -> CmdResult {
+    let mut stdout = stdout();
+    match file.load(&absolute_target)? {
+        H5Object::Group(group) => {
+            find_attr_in_group(&mut stdout, group, target, &key, &value, printer)?;
+        }
+        H5Object::Dataset(_) => {
+            todo!();
+        }
+        H5Object::Attribute(_) => {
+            return Err(CommandError::Error("Is an attribute".to_string()));
+        }
+    }
+    stdout.flush()?;
+    Ok(CommandOutcome::KeepRunning)
+}
+
+fn find_attr_in_group<Q: QueueableCommand>(
+    queue: &mut Q,
+    group: H5Group,
+    target: H5Path,
+    key: &Regex,
+    value: &Option<Regex>,
+    printer: &Printer,
+) -> CmdResult {
+    find_attr_in_location(queue, group.underlying(), &target, key, value, printer)?;
+    for child in group.load_children()? {
+        match child {
+            H5Object::Group(group) => {
+                find_attr_in_location(
+                    queue,
+                    group.underlying(),
+                    group.path(),
+                    key,
+                    value,
+                    printer,
+                )?;
+            }
+            H5Object::Dataset(dataset) => {
+                find_attr_in_location(
+                    queue,
+                    dataset.underlying().deref(),
+                    dataset.path(),
+                    key,
+                    value,
+                    printer,
+                )?;
+            }
+            H5Object::Attribute(_) => {
+                return Err(CommandError::Error("Is an attribute".to_string()));
+            }
+        }
+    }
+    Ok(CommandOutcome::KeepRunning)
+}
+
+fn find_attr_in_location<'q, Q: QueueableCommand, L>(
+    queue: &'q mut Q,
+    location: &L,
+    target: &H5Path,
+    key: &Regex,
+    value: &Option<Regex>,
+    printer: &Printer,
+) -> CmdResult
+where
+    L: Deref<Target = hdf5::Location>,
+{
+    let mut buffer: Vec<u8> = Vec::new();
+    for attr_name in location.attr_names()? {
+        match_attr(&mut buffer, location, &attr_name, key, value, printer)?;
+    }
+    if !buffer.is_empty() {
+        queue
+            .queue(Print(target))?
+            .queue(Print('\n'))?
+            .queue(Print(String::from_utf8(buffer).unwrap_or_default()))?;
+    }
+    Ok(CommandOutcome::KeepRunning)
+}
+
+fn match_attr<'e, E: ExecutableCommand>(
+    buffer: &'e mut E,
+    location: &hdf5::Location,
+    attr_name: &str,
+    key_pattern: &Regex,
+    value_pattern: &Option<Regex>,
+    printer: &Printer,
+) -> CmdResult {
+    let Some(key_match) = key_pattern.find(attr_name) else {
+        return Ok(CommandOutcome::KeepRunning);
+    };
+
+    match value_pattern {
+        Some(value_pattern) => {
+            todo!()
+        }
+        None => {
+            write_attr_match(buffer, attr_name, key_match, None, printer)?;
+        }
+    }
+    Ok(CommandOutcome::KeepRunning)
+}
+
+fn write_attr_match<'e, E: ExecutableCommand>(
+    buffer: &'e mut E,
+    attr_name: &str,
+    key_match: Match,
+    value_match: Option<Match>,
+    printer: &Printer,
+) -> std::io::Result<&'e mut E> {
+    buffer
+        .execute(Print("  "))?
+        .execute(Print(attr_name))?
+        .execute(Print('\n'))
 }
 
 fn queue_with_highlight_range<'q, Q: QueueableCommand>(
