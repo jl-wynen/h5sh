@@ -271,13 +271,15 @@ fn build_content_column<'alloc>(
     };
     for (_, object) in objects {
         let formatted = match object {
-            H5Object::Dataset(dataset) => format_content(dataset, width, printer, bump)
+            H5Object::Dataset(dataset) => format_content(dataset, width, true, printer, bump)
                 .unwrap_or_else(|_| {
                     data_failure_message(bump).unwrap_or_else(|_| BumpString::new_in(bump))
                 }),
             H5Object::Group(_) => BumpString::new_in(bump),
             H5Object::Attribute(attr) => {
-                format_content(attr, width, printer, bump).unwrap_or_else(|_| {
+                // Attrs do not support slicing, since they are usually short, simply
+                // load the entire array and truncate when printing.
+                format_content(attr, width, false, printer, bump).unwrap_or_else(|_| {
                     data_failure_message(bump).unwrap_or_else(|_| BumpString::new_in(bump))
                 })
             }
@@ -291,13 +293,15 @@ fn build_content_column<'alloc>(
 fn format_content<'alloc>(
     container: &impl Deref<Target = hdf5::Container>,
     width: usize,
+    slice: bool,
     printer: &Printer,
     bump: &'alloc Bump,
 ) -> std::io::Result<BumpString<'alloc>> {
     if container.ndim() > 1 {
         data_placeholder(bump)
     } else {
-        let formatted = load_and_format_data(container, Some(8), Some(width), printer, bump)
+        let max_elem = if slice { Some(8) } else { None };
+        let formatted = load_and_format_data(container, max_elem, Some(width), printer, bump)
             .unwrap_or_else(|err| {
                 use std::fmt::Write;
                 let mut message = BumpString::new_in(bump);
