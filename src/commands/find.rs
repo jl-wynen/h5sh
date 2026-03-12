@@ -1,10 +1,13 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
-use crate::h5::{H5Dataset, H5File, H5Group, H5Object, H5Path};
+use crate::commands::Attr;
+use crate::data::load_and_format_data;
+use crate::h5::{H5Attribute, H5Dataset, H5File, H5Group, H5Object, H5Path};
 use crate::output::{
     Printer,
     style::{DATASET_CHARACTER, GROUP_CHARACTER},
 };
 use crate::shell::Shell;
+use bumpalo::{Bump, collections::String as BumpString};
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser};
 use crossterm::{
     ExecutableCommand, QueueableCommand,
@@ -254,8 +257,8 @@ fn find_attr_in_group<Q: QueueableCommand>(
     Ok(CommandOutcome::KeepRunning)
 }
 
-fn find_attr_in_location<'q, Q: QueueableCommand, L>(
-    queue: &'q mut Q,
+fn find_attr_in_location<Q: QueueableCommand, L>(
+    queue: &mut Q,
     location: &L,
     target: &H5Path,
     key: &Regex,
@@ -278,8 +281,8 @@ where
     Ok(CommandOutcome::KeepRunning)
 }
 
-fn match_attr<'e, E: ExecutableCommand>(
-    buffer: &'e mut E,
+fn match_attr<E: ExecutableCommand>(
+    buffer: &mut E,
     location: &hdf5::Location,
     attr_name: &str,
     key_pattern: &Regex,
@@ -290,12 +293,32 @@ fn match_attr<'e, E: ExecutableCommand>(
         return Ok(CommandOutcome::KeepRunning);
     };
 
+    let bump = Bump::new();
+
+    let value = load_and_format_data(&location.attr(attr_name)?, None, None, printer, &bump)
+        .unwrap_or_else(|err| {
+            use std::fmt::Write;
+            let mut out = BumpString::new_in(&bump);
+            let _ = write!(out, "Failed to load attribute: {err}");
+            out
+        });
+
     match value_pattern {
         Some(value_pattern) => {
-            todo!()
+            let Some(value_match) = value_pattern.find(&value) else {
+                return Ok(CommandOutcome::KeepRunning);
+            };
+            write_attr_match(
+                buffer,
+                attr_name,
+                &value,
+                key_match,
+                Some(value_match),
+                printer,
+            )?;
         }
         None => {
-            write_attr_match(buffer, attr_name, key_match, None, printer)?;
+            write_attr_match(buffer, attr_name, &value, key_match, None, printer)?;
         }
     }
     Ok(CommandOutcome::KeepRunning)
@@ -304,6 +327,7 @@ fn match_attr<'e, E: ExecutableCommand>(
 fn write_attr_match<'e, E: ExecutableCommand>(
     buffer: &'e mut E,
     attr_name: &str,
+    attr_value: &str,
     key_match: Match,
     value_match: Option<Match>,
     printer: &Printer,
@@ -311,6 +335,8 @@ fn write_attr_match<'e, E: ExecutableCommand>(
     buffer
         .execute(Print("  "))?
         .execute(Print(attr_name))?
+        .execute(Print(" = "))?
+        .execute(Print(attr_value))?
         .execute(Print('\n'))
 }
 
