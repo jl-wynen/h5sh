@@ -273,8 +273,13 @@ where
         match_attr(&mut buffer, location, &attr_name, key, value, printer)?;
     }
     if !buffer.is_empty() {
+        let bump = Bump::new();
         queue
-            .queue(Print(target))?
+            .queue(Print(printer.format_location_name(
+                &target.to_string(),
+                location,
+                &bump,
+            )))?
             .queue(Print('\n'))?
             .queue(Print(String::from_utf8(buffer).unwrap_or_default()))?;
     }
