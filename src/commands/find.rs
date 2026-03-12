@@ -206,8 +206,15 @@ fn find_attr(
         H5Object::Group(group) => {
             find_attr_in_group(&mut stdout, group, target, &key, &value, printer)?;
         }
-        H5Object::Dataset(_) => {
-            todo!();
+        H5Object::Dataset(dataset) => {
+            find_attr_in_location(
+                &mut stdout,
+                dataset.underlying().deref(),
+                dataset.path(),
+                &key,
+                &value,
+                printer,
+            )?;
         }
         H5Object::Attribute(_) => {
             return Err(CommandError::Error("Is an attribute".to_string()));
