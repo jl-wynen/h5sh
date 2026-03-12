@@ -1,7 +1,6 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
-use crate::commands::Attr;
 use crate::data::load_and_format_data;
-use crate::h5::{H5Attribute, H5Dataset, H5File, H5Group, H5Object, H5Path};
+use crate::h5::{H5File, H5Group, H5Object, H5Path};
 use crate::output::{
     Printer,
     style::{DATASET_CHARACTER, GROUP_CHARACTER},
@@ -286,7 +285,7 @@ where
     Ok(CommandOutcome::KeepRunning)
 }
 
-fn match_attr<E: ExecutableCommand>(
+fn match_attr<E: ExecutableCommand + QueueableCommand>(
     buffer: &mut E,
     location: &hdf5::Location,
     attr_name: &str,
@@ -329,20 +328,30 @@ fn match_attr<E: ExecutableCommand>(
     Ok(CommandOutcome::KeepRunning)
 }
 
-fn write_attr_match<'e, E: ExecutableCommand>(
-    buffer: &'e mut E,
+fn write_attr_match<'e, Q: QueueableCommand>(
+    queue: &'e mut Q,
     attr_name: &str,
     attr_value: &str,
     key_match: Match,
     value_match: Option<Match>,
     printer: &Printer,
-) -> std::io::Result<&'e mut E> {
-    buffer
-        .execute(Print("  "))?
-        .execute(Print(attr_name))?
-        .execute(Print(" = "))?
-        .execute(Print(attr_value))?
-        .execute(Print('\n'))
+) -> std::io::Result<&'e mut Q> {
+    queue
+        .queue(Print("  "))?
+        .queue(&printer.style().attribute)?;
+    queue_with_highlight_range(queue, attr_name, key_match.range())?;
+    queue
+        .queue(Print(" = "))?
+        .queue(ResetColor)?
+        .queue(SetAttribute(Attribute::Reset))?;
+
+    if let Some(mat) = value_match {
+        queue_with_highlight_range(queue, attr_value, mat.range())?;
+    } else {
+        queue.queue(Print(attr_value))?;
+    }
+
+    queue.queue(Print('\n'))
 }
 
 fn queue_with_highlight_range<'q, Q: QueueableCommand>(
