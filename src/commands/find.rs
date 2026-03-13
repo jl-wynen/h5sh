@@ -49,21 +49,29 @@ impl Command for Find {
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(
+    name("find"),
+    verbatim_doc_comment,
+    after_help = "Examples:
+
+Find all locations with 'monitor' in their name:
+  find monitor
+
+Find all locations that have an attr with 'tag' in its name:
+  find @tag
+
+Find all locations that have an attr with 'NX_class' in its name
+and a value that matches 'NXmonitor':
+  find @NX_class=NXmonitor
+
+Find all locations that are named exactly 'sample':
+  find ^sample$"
+)]
 /// Find datasets and groups.
 ///
-/// Examples:
-///
-/// Find all locations with 'monitor' in their name:
-///   find monitor
-///
-/// Find all locations that have an attr with 'tag' in its name:
-///   find @tag
-///
-/// Find all locations that have an attr with 'NX_class' in its name
-/// and a value that matches 'NXmonitor':
-///   find @NX_class=NXmonitor
-#[derive(Parser, Debug)]
-#[command(name("find"))]
+/// The input is a regex, and the implementation searches for matches
+/// in dataset, group, attribute names.
 struct Arguments {
     /// Pattern to search for.
     pattern: Pattern,
