@@ -1,4 +1,5 @@
 use super::Style;
+use super::style::{ATTRIBUTE_CHARACTER, DATASET_CHARACTER, GROUP_CHARACTER};
 use crate::cmd::CommandError;
 use crate::h5::H5Object;
 use bumpalo::{
@@ -9,7 +10,10 @@ use crossterm::{
     QueueableCommand, execute, queue,
     style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
 };
-use hdf5::types::{FloatSize, IntSize, Reference, TypeDescriptor};
+use hdf5::{
+    Location, LocationType,
+    types::{FloatSize, IntSize, Reference, TypeDescriptor},
+};
 use std::fmt::{Display, Formatter};
 use std::io::{Write, stderr, stdout};
 use term_grid::{Direction, Filling, Grid, GridOptions};
@@ -90,9 +94,9 @@ impl Printer {
     ) -> BumpString<'alloc> {
         let mut buffer = BumpVec::<u8>::new_in(bump);
         let (style, character) = match object {
-            H5Object::Dataset(_) => (&self.style().dataset, ' '),
-            H5Object::Group(_) => (&self.style().group, '/'),
-            H5Object::Attribute(_) => (&self.style().attribute, '@'),
+            H5Object::Dataset(_) => (&self.style().dataset, DATASET_CHARACTER),
+            H5Object::Group(_) => (&self.style().group, GROUP_CHARACTER),
+            H5Object::Attribute(_) => (&self.style().attribute, ATTRIBUTE_CHARACTER),
         };
         let _ = execute!(
             buffer,
@@ -100,8 +104,35 @@ impl Printer {
             Print(name),
             ResetColor,
             SetAttribute(Attribute::Reset),
-            Print(character),
         );
+        if let Some(character) = character {
+            let _ = execute!(buffer, Print(character));
+        }
+        BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump))
+    }
+
+    pub fn format_location_name<'alloc>(
+        &self,
+        name: &str,
+        location: &Location,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        let mut buffer = BumpVec::<u8>::new_in(bump);
+        let (style, character) = match location.loc_type() {
+            Ok(LocationType::Dataset) => (&self.style().dataset, DATASET_CHARACTER),
+            Ok(LocationType::Group) => (&self.style().group, GROUP_CHARACTER),
+            _ => (&self.style.dataset, None),
+        };
+        let _ = execute!(
+            buffer,
+            style,
+            Print(name),
+            ResetColor,
+            SetAttribute(Attribute::Reset),
+        );
+        if let Some(character) = character {
+            let _ = execute!(buffer, Print(character));
+        }
         BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump))
     }
 

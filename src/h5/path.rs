@@ -14,6 +14,10 @@ impl H5Path {
         self.raw.starts_with("/")
     }
 
+    pub fn is_current(&self) -> bool {
+        self.raw == "."
+    }
+
     pub fn join(&self, other: &H5Path) -> H5Path {
         if other.is_absolute() {
             other.clone()
@@ -68,10 +72,16 @@ impl H5Path {
     }
 
     pub fn resolve(&self) -> Self {
+        if self.raw == "." {
+            return self.clone();
+        }
+
         let mut segments = Vec::with_capacity(2);
         for segment in self.segments() {
             if segment == ".." {
                 segments.pop();
+            } else if segment == "." {
+                continue;
             } else if !segment.is_empty() {
                 segments.push(segment);
             }
@@ -81,6 +91,16 @@ impl H5Path {
             new = format!("/{new}");
         }
         Self { raw: new }
+    }
+
+    pub fn relative_to(&self, other: &H5Path) -> Self {
+        if self == other {
+            Self::from(".")
+        } else if let Some(stripped) = self.as_raw().strip_prefix(other.as_raw()) {
+            Self::from(stripped.trim_start_matches('/'))
+        } else {
+            self.clone()
+        }
     }
 
     pub fn as_raw(&self) -> &str {
@@ -239,6 +259,14 @@ mod tests {
     }
 
     #[test]
+    fn resolve_current_path() {
+        let path = H5Path::from(".".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from(".".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
     fn resolve_root_path() {
         let path = H5Path::from("/".to_string());
         let resolved = path.resolve();
@@ -308,5 +336,76 @@ mod tests {
         let resolved = path.resolve();
         let expected = H5Path::from("/a/b/d".to_string());
         assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_removes_dot() {
+        let path = H5Path::from("/a/./b/.".to_string());
+        let resolved = path.resolve();
+        let expected = H5Path::from("/a/b".to_string());
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn relative_to_self() {
+        let path = H5Path::from("/a/b/c/d");
+        let parent = path.clone();
+        let relative = path.relative_to(&parent);
+        let expected = H5Path::from(".");
+        assert_eq!(relative, expected);
+    }
+
+    #[test]
+    fn relative_to_root() {
+        let path = H5Path::from("/a/b/");
+        let parent = H5Path::root();
+        let relative = path.relative_to(&parent);
+        let expected = H5Path::from("a/b/");
+        assert_eq!(relative, expected);
+    }
+
+    #[test]
+    fn relative_to_absolute() {
+        let path = H5Path::from("/a/b/c");
+        let parent = H5Path::from("/a/b");
+        let relative = path.relative_to(&parent);
+        let expected = H5Path::from("c");
+        assert_eq!(relative, expected);
+    }
+
+    #[test]
+    fn relative_to_relative() {
+        let path = H5Path::from("a/b/c");
+        let parent = H5Path::from("a");
+        let relative = path.relative_to(&parent);
+        let expected = H5Path::from("b/c");
+        assert_eq!(relative, expected);
+    }
+
+    #[test]
+    fn absolute_relative_to_relative() {
+        let path = H5Path::from("/a/b/c");
+        let parent = H5Path::from("a");
+        let relative = path.relative_to(&parent);
+        let expected = H5Path::from("/a/b/c"); // preserves input
+        assert_eq!(relative, expected);
+    }
+
+    #[test]
+    fn relative_relative_to_absolute() {
+        let path = H5Path::from("a/b/c");
+        let parent = H5Path::from("/a");
+        let relative = path.relative_to(&parent);
+        let expected = H5Path::from("a/b/c"); // preserves input
+        assert_eq!(relative, expected);
+    }
+
+    #[test]
+    fn relative_to_other_path() {
+        let path = H5Path::from("/a/b/c");
+        let parent = H5Path::from("/d/e/a");
+        let relative = path.relative_to(&parent);
+        let expected = H5Path::from("/a/b/c");
+        assert_eq!(relative, expected);
     }
 }

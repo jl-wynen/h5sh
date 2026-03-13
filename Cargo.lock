@@ -727,6 +727,7 @@ dependencies = [
  "ndarray",
  "nu-ansi-term",
  "pretty_assertions",
+ "regex",
  "rustyline",
  "self-replace",
  "self_update",
