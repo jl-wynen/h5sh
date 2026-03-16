@@ -1,7 +1,7 @@
 use super::Style;
 use super::style::{ATTRIBUTE_CHARACTER, DATASET_CHARACTER, GROUP_CHARACTER};
 use crate::cmd::CommandError;
-use crate::h5::H5Object;
+use crate::h5::{H5Object, H5Path};
 use bumpalo::{
     Bump,
     collections::{String as BumpString, Vec as BumpVec},
@@ -134,6 +134,36 @@ impl Printer {
             let _ = execute!(buffer, Print(character));
         }
         BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump))
+    }
+
+    pub fn format_location_path<'alloc>(
+        &self,
+        path: &H5Path,
+        location: &Location,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        let path = path.resolve();
+
+        let mut buffer = BumpVec::<u8>::new_in(bump);
+        let parent = path.parent();
+        if !parent.as_raw().is_empty() {
+            let _ = execute!(buffer, &self.style().group, Print(parent.as_raw()),);
+            if !parent.as_raw().ends_with('/') {
+                let _ = execute!(buffer, Print('/'));
+            }
+            let _ = execute!(buffer, ResetColor, SetAttribute(Attribute::Reset));
+        }
+        let parent_str = BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump));
+
+        use std::fmt::Write;
+        let mut out = BumpString::new_in(bump);
+        let _ = write!(
+            out,
+            "{}{}",
+            parent_str,
+            self.format_location_name(path.name(), location, bump)
+        );
+        out
     }
 
     pub fn style(&self) -> &Style {

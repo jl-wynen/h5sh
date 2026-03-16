@@ -44,6 +44,7 @@ impl Command for Find {
                     absolute_target,
                     name,
                     value,
+                    !args.non_recursive,
                     shell.printer(),
                 )?;
             }
@@ -228,12 +229,13 @@ fn find_attr(
     absolute_target: H5Path,
     key: Regex,
     value: Option<Regex>,
+    recursive: bool,
     printer: &Printer,
 ) -> CmdResult {
     let mut stdout = stdout();
     match file.load(&absolute_target)? {
         H5Object::Group(group) => {
-            find_attr_in_group(&mut stdout, group, target, &key, &value, printer)?;
+            find_attr_in_group(&mut stdout, group, target, &key, &value, recursive, printer)?;
         }
         H5Object::Dataset(dataset) => {
             find_attr_in_location(
@@ -259,26 +261,34 @@ fn find_attr_in_group<Q: QueueableCommand>(
     target: H5Path,
     key: &Regex,
     value: &Option<Regex>,
+    recursive: bool,
     printer: &Printer,
 ) -> CmdResult {
     find_attr_in_location(queue, group.underlying(), &target, key, value, printer)?;
     for child in group.load_children()? {
         match child {
             H5Object::Group(group) => {
-                find_attr_in_location(
-                    queue,
-                    group.underlying(),
-                    group.path(),
-                    key,
-                    value,
-                    printer,
-                )?;
+                if recursive {
+                    let child_path = target.join(group.path());
+                    // dbg!("recurse", &group, &child_path, &target);
+                    find_attr_in_group(queue, group, child_path, key, value, recursive, printer)?;
+                } else {
+                    // Search in the child group; would otherwise be handled by recursion.
+                    find_attr_in_location(
+                        queue,
+                        group.underlying(),
+                        group.path(),
+                        key,
+                        value,
+                        printer,
+                    )?;
+                }
             }
             H5Object::Dataset(dataset) => {
                 find_attr_in_location(
                     queue,
                     dataset.underlying().deref(),
-                    dataset.path(),
+                    &target.join(dataset.path()),
                     key,
                     value,
                     printer,
@@ -310,11 +320,7 @@ where
     if !buffer.is_empty() {
         let bump = Bump::new();
         queue
-            .queue(Print(printer.format_location_name(
-                &target.to_string(),
-                location,
-                &bump,
-            )))?
+            .queue(Print(printer.format_location_path(target, location, &bump)))?
             .queue(Print('\n'))?
             .queue(Print(String::from_utf8(buffer).unwrap_or_default()))?;
     }
@@ -377,8 +383,8 @@ fn write_attr_match<'e, Q: QueueableCommand>(
         .queue(&printer.style().attribute)?;
     queue_with_highlight_range(queue, attr_name, key_match.range())?;
     queue
-        .queue(Print(" = "))?
         .queue(ResetColor)?
+        .queue(Print(" = "))?
         .queue(SetAttribute(Attribute::Reset))?;
 
     if let Some(mat) = value_match {
