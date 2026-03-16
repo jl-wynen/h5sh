@@ -175,10 +175,6 @@ mod load_and_format {
 
         let mut out = BumpString::new_in(bump);
 
-        // TODO remove?
-        let mut buffer: Vec<u8> = Vec::new();
-        buffer.execute(Print(content.array())).unwrap();
-
         if write!(&mut out, "{}", content.array()).is_err() {
             let _ = write!(&mut out, "<failed write>");
         };
