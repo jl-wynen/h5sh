@@ -13,10 +13,10 @@ where
     LoadChildren: Fn(&Value) -> h5::Result<Children>,
     Children: IntoIterator<Item = (H5Path, Value, bool)>,
 {
-    if let Some(entry) = cache.get(current) {
-        if entry.is_leaf() || !current.as_raw().ends_with('/') {
-            return vec![finalize_entry_path(current.as_raw(), entry)];
-        }
+    if let Some(entry) = cache.get(current)
+        && (entry.is_leaf() || !current.as_raw().ends_with('/'))
+    {
+        return vec![finalize_entry_path(current.as_raw(), entry)];
     }
 
     let parent = current.parent();
