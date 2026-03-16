@@ -246,7 +246,7 @@ fn format_known_dtype<'alloc>(
     Ok((width, formatted))
 }
 
-fn format_unknown_dtype(bump: &Bump) -> std::io::Result<(usize, BumpString)> {
+fn format_unknown_dtype(bump: &Bump) -> std::io::Result<(usize, BumpString<'_>)> {
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer
         .execute(Print('<'))?
@@ -316,7 +316,7 @@ fn format_content<'alloc>(
     }
 }
 
-fn data_placeholder(bump: &Bump) -> std::io::Result<BumpString> {
+fn data_placeholder(bump: &Bump) -> std::io::Result<BumpString<'_>> {
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer
         .execute(SetForegroundColor(Color::DarkGrey))?
@@ -325,7 +325,7 @@ fn data_placeholder(bump: &Bump) -> std::io::Result<BumpString> {
     Ok(BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump)))
 }
 
-fn data_failure_message(bump: &Bump) -> std::io::Result<BumpString> {
+fn data_failure_message(bump: &Bump) -> std::io::Result<BumpString<'_>> {
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer
         .execute(SetForegroundColor(Color::DarkRed))?

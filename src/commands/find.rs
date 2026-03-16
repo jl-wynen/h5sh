@@ -137,18 +137,16 @@ fn find_name_in_group(
                 printer,
             )?;
         };
-        if recursive {
-            if let H5Object::Group(child_group) = child {
-                let child_path = child_group.path().clone();
-                find_name_in_group(
-                    child_group,
-                    child_path,
-                    absolute_target.join(&path),
-                    pattern,
-                    recursive,
-                    printer,
-                )?;
-            }
+        if recursive && let H5Object::Group(child_group) = child {
+            let child_path = child_group.path().clone();
+            find_name_in_group(
+                child_group,
+                child_path,
+                absolute_target.join(&path),
+                pattern,
+                recursive,
+                printer,
+            )?;
         }
     }
     stdout.flush()?;
