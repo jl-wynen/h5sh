@@ -51,14 +51,18 @@ jobs:
       - name: Prepare artifacts [Windows]
         if: "contains(matrix.target, 'windows')"
         run: |
+          cp README.md target/${{ matrix.target }}/release/
+          cp LICENSE target/${{ matrix.target }}/release/
           cd target/${{ matrix.target }}/release
-          7z a ../../../${{ matrix.archive_name }} h5sh.exe
+          7z a ../../../${{ matrix.archive_name }} h5sh.exe README.md LICENSE
           cd -
       - name: Prepare artifacts [-nix]
         if: "!contains(matrix.target, 'windows')"
         run: |
+          cp README.md target/${{ matrix.target }}/release/
+          cp LICENSE target/${{ matrix.target }}/release/
           cd target/${{ matrix.target }}/release
-          zip ../../../${{ matrix.archive_name }} h5sh
+          zip ../../../${{ matrix.archive_name }} h5sh README.md LICENSE
           cd -
 
       - name: Upload artifacts
