@@ -725,7 +725,6 @@ dependencies = [
  "log",
  "lscolors",
  "ndarray",
- "nu-ansi-term",
  "pretty_assertions",
  "regex",
  "rustyline",
