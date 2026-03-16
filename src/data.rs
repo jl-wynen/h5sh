@@ -178,10 +178,10 @@ mod load_and_format {
         if write!(&mut out, "{}", content.array()).is_err() {
             let _ = write!(&mut out, "<failed write>");
         };
-        if matches!(content, PartialData::Full(_))
-            && let Some(max_width) = max_width
-        {
-            if max_width < out.len() {
+        if matches!(content, PartialData::Full(_)) {
+            if let Some(max_width) = max_width
+                && max_width < out.len()
+            {
                 out.truncate(max_width.saturating_sub(4));
                 out.push_str(&trailing_ellipses);
             }
