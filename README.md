@@ -3,8 +3,8 @@
 ## Installation
 
 1. Download the binary for you platform from the GitHub [releases](https://github.com/jl-wynen/h5sh/releases/latest).
-2. (Optionally) download the corresponding checksum file
-   - Validate with `sha256sum -c h5sh-*.sha256` (Unix)
+2. (Optionally) download the checksum file
+   - Validate with `sha256sum -c SHA256SUMS` (Unix)
 3. Copy the binary to a location on your PATH.
 
 ## Usage
