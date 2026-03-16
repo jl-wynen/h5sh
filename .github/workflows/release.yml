@@ -51,14 +51,18 @@ jobs:
       - name: Prepare artifacts [Windows]
         if: "contains(matrix.target, 'windows')"
         run: |
+          cp README.md target/${{ matrix.target }}/release/
+          cp LICENSE target/${{ matrix.target }}/release/
           cd target/${{ matrix.target }}/release
-          7z a ../../../${{ matrix.archive_name }} h5sh.exe
+          7z a ../../../${{ matrix.archive_name }} h5sh.exe README.md LICENSE
           cd -
       - name: Prepare artifacts [-nix]
         if: "!contains(matrix.target, 'windows')"
         run: |
+          cp README.md target/${{ matrix.target }}/release/
+          cp LICENSE target/${{ matrix.target }}/release/
           cd target/${{ matrix.target }}/release
-          zip ../../../${{ matrix.archive_name }} h5sh
+          zip ../../../${{ matrix.archive_name }} h5sh README.md LICENSE
           cd -
 
       - name: Upload artifacts
@@ -77,8 +81,14 @@ jobs:
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
+      - name: Collect release files
+        run: |
+          mkdir release-assets
+          find h5sh-* -type f -name 'h5sh-*.zip' -exec cp {} release-assets/ \;
       - name: Compute checksums
-        run: for file in h5sh-*/h5sh-*; do sha256sum "$file" > "${file}.sha256"; done
+        run: |
+          cd release-assets
+          sha256sum h5sh-*.zip > SHA256SUMS
       - name: Upload binaries to GH release
         uses: svenstaro/upload-release-action@v2
         with:
