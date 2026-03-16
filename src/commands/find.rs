@@ -28,7 +28,14 @@ impl Command for Find {
         let absolute_target = shell.resolve_path(&args.target);
         match args.pattern {
             Pattern::Name(name) => {
-                find_name(file, args.target, absolute_target, name, shell.printer())?;
+                find_name(
+                    file,
+                    args.target,
+                    absolute_target,
+                    name,
+                    !args.non_recursive,
+                    shell.printer(),
+                )?;
             }
             Pattern::Attr { name, value } => {
                 find_attr(
@@ -80,9 +87,9 @@ struct Arguments {
     #[arg(default_value = ".")]
     target: H5Path,
 
-    /// Search groups recursively.
-    #[arg(short = 'r', long, default_value_t = false)]
-    recursive: bool,
+    /// Do not search groups recursively.
+    #[arg(short = 'R', long = "nr", default_value_t = false)]
+    non_recursive: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -96,11 +103,12 @@ fn find_name(
     target: H5Path,
     absolute_target: H5Path,
     pattern: Regex,
+    recursive: bool,
     printer: &Printer,
 ) -> CmdResult {
     match file.load(&absolute_target)? {
         H5Object::Group(group) => {
-            find_name_in_group(group, target, absolute_target, &pattern, printer)
+            find_name_in_group(group, target, absolute_target, &pattern, recursive, printer)
         }
         H5Object::Dataset(_) => match_name_dataset(target, &pattern, printer),
         H5Object::Attribute(_) => Err(CommandError::Error("Is an attribute".to_string())),
@@ -112,15 +120,35 @@ fn find_name_in_group(
     target: H5Path,
     absolute_target: H5Path,
     pattern: &Regex,
+    recursive: bool,
     printer: &Printer,
 ) -> CmdResult {
     let mut stdout = stdout();
-    for (path, info) in group.load_child_locations()?.into_iter() {
-        let path = path.relative_to(&absolute_target);
-        let Some(mat) = pattern.find(path.as_raw()) else {
-            continue;
+    for child in group.load_children()?.into_iter() {
+        let path = child.path().relative_to(&absolute_target);
+        if let Some(mat) = pattern.find(path.as_raw()) {
+            write_matched_path(
+                &mut stdout,
+                &target,
+                &path,
+                mat,
+                child.location_type(),
+                printer,
+            )?;
         };
-        write_matched_path(&mut stdout, &target, &path, mat, info.loc_type, printer)?;
+        if recursive {
+            if let H5Object::Group(child_group) = child {
+                let child_path = child_group.path().clone();
+                find_name_in_group(
+                    child_group,
+                    child_path,
+                    absolute_target.join(&path),
+                    pattern,
+                    recursive,
+                    printer,
+                )?;
+            }
+        }
     }
     stdout.flush()?;
     Ok(CommandOutcome::KeepRunning)

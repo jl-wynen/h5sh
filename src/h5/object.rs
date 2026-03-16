@@ -168,11 +168,23 @@ impl H5Object {
         }
     }
 
-    pub fn location_info(&self) -> hdf5::Result<hdf5::LocationInfo> {
+    pub fn location_info(&self) -> hdf5::Result<LocationInfo> {
         match self {
             H5Object::Dataset(dataset) => dataset.location_info(),
             H5Object::Group(group) => group.location_info(),
-            H5Object::Attribute(_) => todo!("location info"),
+            H5Object::Attribute(_) => {
+                panic!("Attributes are not locations. This error is a bug in h5sh.")
+            }
+        }
+    }
+
+    pub fn location_type(&self) -> LocationType {
+        match self {
+            H5Object::Dataset(_) => LocationType::Dataset,
+            H5Object::Group(_) => LocationType::Group,
+            H5Object::Attribute(_) => {
+                panic!("Attributes are not locations. This error is a bug in h5sh.")
+            }
         }
     }
 }
