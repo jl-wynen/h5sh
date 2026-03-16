@@ -164,7 +164,9 @@ impl H5Object {
         match self {
             H5Object::Dataset(dataset) => dataset.path(),
             H5Object::Group(group) => group.path(),
-            H5Object::Attribute(_) => todo!("path"),
+            H5Object::Attribute(_) => {
+                panic!("Attributes are not locations. This error is a bug in h5sh.")
+            }
         }
     }
 
