@@ -5,10 +5,7 @@ use bumpalo::{
     Bump,
     collections::{CollectIn, String as BumpString, Vec as BumpVec},
 };
-use crossterm::{
-    ExecutableCommand, QueueableCommand,
-    style::{Color, Print, ResetColor, SetForegroundColor},
-};
+use crossterm::{ExecutableCommand, QueueableCommand, style::Print};
 use std::io::Write;
 use std::ops::Deref;
 
@@ -22,7 +19,7 @@ pub(super) fn queue_object_table<'q, Q: Write>(
     let n_rows = objects.len();
 
     let mut columns = Vec::with_capacity(5);
-    columns.push(build_shape_column(&bump, objects)?);
+    columns.push(build_shape_column(&bump, objects, printer)?);
     columns.push(build_size_column(&bump, objects, printer)?);
     columns.push(build_dtype_column(&bump, objects, printer)?);
     columns.push(build_name_column(&bump, objects, printer)?);
@@ -138,9 +135,9 @@ fn format_size<'alloc>(
 
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer
-        .execute(SetForegroundColor(Color::DarkGreen))?
+        .execute(&printer.style().size)?
         .execute(Print(size))?
-        .execute(ResetColor)?;
+        .execute(printer.style().reset())?;
     let formatted = BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump));
 
     Ok((width, formatted))
@@ -149,6 +146,7 @@ fn format_size<'alloc>(
 fn build_shape_column<'alloc>(
     bump: &'alloc Bump,
     objects: &[(&str, &H5Object)],
+    printer: &Printer,
 ) -> std::io::Result<Column<'alloc>> {
     let mut column = Column {
         widths: BumpVec::with_capacity_in(objects.len(), bump),
@@ -157,9 +155,9 @@ fn build_shape_column<'alloc>(
     };
     for (_, object) in objects {
         let (width, formatted) = match object {
-            H5Object::Dataset(dataset) => format_shape(&dataset.shape(), bump)?,
+            H5Object::Dataset(dataset) => format_shape(&dataset.shape(), printer, bump)?,
             H5Object::Group(_) => (0, BumpString::new_in(bump)),
-            H5Object::Attribute(attr) => format_shape(&attr.shape(), bump)?,
+            H5Object::Attribute(attr) => format_shape(&attr.shape(), printer, bump)?,
         };
         column.widths.push(width);
         column.formatted.push(formatted);
@@ -169,6 +167,7 @@ fn build_shape_column<'alloc>(
 
 fn format_shape<'alloc>(
     shape: &[usize],
+    printer: &Printer,
     bump: &'alloc Bump,
 ) -> std::io::Result<(usize, BumpString<'alloc>)> {
     let mut width = 2; // initial value for parentheses
@@ -185,9 +184,9 @@ fn format_shape<'alloc>(
         let dim_str = dim.to_string();
         width += dim_str.len();
         buffer
-            .execute(SetForegroundColor(Color::DarkCyan))?
+            .execute(&printer.style().shape)?
             .execute(Print(dim_str))?
-            .execute(ResetColor)?;
+            .execute(printer.style().reset())?;
     }
     buffer.execute(Print(")"))?;
     Ok((
@@ -226,7 +225,7 @@ fn format_dtype_of<'alloc>(
     if let Ok(descriptor) = container.dtype()?.to_descriptor() {
         format_known_dtype(&descriptor, printer, bump)
     } else {
-        format_unknown_dtype(bump)
+        format_unknown_dtype(printer, bump)
     }
 }
 
@@ -239,20 +238,23 @@ fn format_known_dtype<'alloc>(
     let width = dtype.len();
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer
-        .execute(SetForegroundColor(Color::DarkMagenta))?
+        .execute(&printer.style().dtype)?
         .execute(Print(dtype))?
-        .execute(ResetColor)?;
+        .execute(printer.style().reset())?;
     let formatted = BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump));
     Ok((width, formatted))
 }
 
-fn format_unknown_dtype(bump: &Bump) -> std::io::Result<(usize, BumpString<'_>)> {
+fn format_unknown_dtype<'alloc>(
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> std::io::Result<(usize, BumpString<'alloc>)> {
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer
         .execute(Print('<'))?
-        .execute(SetForegroundColor(Color::DarkMagenta))?
+        .execute(&printer.style().dtype)?
         .execute(Print('?'))?
-        .execute(ResetColor)?
+        .execute(printer.style().reset())?
         .execute(Print('>'))?;
     let formatted = BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump));
     Ok((3, formatted))
@@ -273,14 +275,14 @@ fn build_content_column<'alloc>(
         let formatted = match object {
             H5Object::Dataset(dataset) => format_content(dataset, width, true, printer, bump)
                 .unwrap_or_else(|_| {
-                    data_failure_message(bump).unwrap_or_else(|_| BumpString::new_in(bump))
+                    data_failure_message(printer, bump).unwrap_or_else(|_| BumpString::new_in(bump))
                 }),
             H5Object::Group(_) => BumpString::new_in(bump),
             H5Object::Attribute(attr) => {
                 // Attrs do not support slicing, since they are usually short, simply
                 // load the entire array and truncate when printing.
                 format_content(attr, width, false, printer, bump).unwrap_or_else(|_| {
-                    data_failure_message(bump).unwrap_or_else(|_| BumpString::new_in(bump))
+                    data_failure_message(printer, bump).unwrap_or_else(|_| BumpString::new_in(bump))
                 })
             }
         };
@@ -298,7 +300,7 @@ fn format_content<'alloc>(
     bump: &'alloc Bump,
 ) -> std::io::Result<BumpString<'alloc>> {
     if container.ndim() > 1 {
-        data_placeholder(bump)
+        data_placeholder(printer, bump)
     } else {
         let max_elem = if slice { Some(8) } else { None };
         let formatted = load_and_format_data(container, max_elem, Some(width), printer, bump)
@@ -316,20 +318,26 @@ fn format_content<'alloc>(
     }
 }
 
-fn data_placeholder(bump: &Bump) -> std::io::Result<BumpString<'_>> {
+fn data_placeholder<'alloc>(
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> std::io::Result<BumpString<'alloc>> {
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer
-        .execute(SetForegroundColor(Color::DarkGrey))?
+        .execute(&printer.style().placeholder)?
         .execute(Print("[...]"))?
-        .execute(ResetColor)?;
+        .execute(printer.style().reset())?;
     Ok(BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump)))
 }
 
-fn data_failure_message(bump: &Bump) -> std::io::Result<BumpString<'_>> {
+fn data_failure_message<'alloc>(
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> std::io::Result<BumpString<'alloc>> {
     let mut buffer = BumpVec::<u8>::new_in(bump);
     buffer
-        .execute(SetForegroundColor(Color::DarkRed))?
+        .execute(&printer.style().error)?
         .execute(Print("Failed to load data"))?
-        .execute(ResetColor)?;
+        .execute(printer.style().reset())?;
     Ok(BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump)))
 }

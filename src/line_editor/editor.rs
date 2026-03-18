@@ -2,13 +2,10 @@ use super::completion;
 use super::parse::{Argument, Expression, Parser, StringExpression};
 use super::text_index::TextIndex;
 use crate::h5::{self, CacheValue, H5Error, H5File, H5FileCache, H5Object, H5Path};
-use crate::shell::Shell;
-
+use crate::output::Style;
 use crate::prompt::Prompt;
-use crossterm::{
-    ExecutableCommand,
-    style::{Attribute, Color, Print, PrintStyledContent, Stylize},
-};
+use crate::shell::Shell;
+use crossterm::{ExecutableCommand, style::Print};
 use log::{error, info};
 use rustyline::{
     CompletionType, Context, Helper, Hinter, Validator,
@@ -31,10 +28,14 @@ pub struct LineEditor<'f> {
 }
 
 impl<'f> LineEditor<'f> {
-    pub fn new(commands: HashSet<String>, file: &'f H5File) -> rustyline::Result<Self> {
+    pub fn new(
+        commands: HashSet<String>,
+        file: &'f H5File,
+        style: &Style,
+    ) -> rustyline::Result<Self> {
         let mut editor = UnderlyingEditor::with_config(configuration()?)?;
 
-        let hinter = match Hinter::new(commands, file) {
+        let hinter = match Hinter::new(commands, file, style.clone()) {
             Ok(hinter) => hinter,
             Err(err) => {
                 error!("Failed to create hinter: {err}");
@@ -48,7 +49,7 @@ impl<'f> LineEditor<'f> {
         }
         Ok(Self {
             editor,
-            prompt: Prompt::new(),
+            prompt: Prompt::new(style),
         })
     }
 
@@ -104,15 +105,17 @@ struct Hinter<'f> {
     file: &'f H5File,
     file_cache: RefCell<H5FileCache>,
     working_group: H5Path,
+    style: Style,
 }
 
 impl<'f> Hinter<'f> {
-    fn new(commands: HashSet<String>, file: &'f H5File) -> h5::Result<Self> {
+    fn new(commands: HashSet<String>, file: &'f H5File, style: Style) -> h5::Result<Self> {
         Ok(Self {
             commands,
             file,
             file_cache: H5FileCache::with_root(file)?.into(),
             working_group: H5Path::root(),
+            style,
         })
     }
 }
@@ -163,7 +166,8 @@ impl<'f> Highlighter for Hinter<'f> {
     fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
         let expression = Parser::new(line).parse();
 
-        if let Ok(highlighted) = InputHighlighter::new(&self.commands).highlight(&expression, line)
+        if let Ok(highlighted) =
+            InputHighlighter::new(&self.commands).highlight(&expression, line, &self.style)
         {
             Cow::Owned(highlighted)
         } else {
@@ -197,45 +201,60 @@ impl<'a> InputHighlighter<'a> {
         }
     }
 
-    fn highlight(mut self, expression: &Expression, src: &str) -> std::io::Result<String> {
+    fn highlight(
+        mut self,
+        expression: &Expression,
+        src: &str,
+        style: &Style,
+    ) -> std::io::Result<String> {
         // Allocated enough space for most cases
         self.buffer.reserve((2 * src.len()).max(16));
-        self.highlight_expression(expression, src)?;
+        self.highlight_expression(expression, src, style)?;
         self.unstyled_to(src.len().into(), src)?;
         Ok(String::from_utf8(self.buffer).unwrap_or_else(|_| src.to_string()))
     }
 
-    fn highlight_expression(&mut self, expr: &Expression, src: &str) -> std::io::Result<()> {
+    fn highlight_expression(
+        &mut self,
+        expr: &Expression,
+        src: &str,
+        style: &Style,
+    ) -> std::io::Result<()> {
         match expr {
             Expression::Call(call) => {
-                let function_color = if self.commands.contains(&src[call.function.range]) {
-                    Some(Color::White)
+                let function_style = if self.commands.contains(&src[call.function.range]) {
+                    &style.editor.command
                 } else {
-                    Some(Color::Red)
+                    &style.editor.bad_command
                 };
-                self.highlight_string(&call.function, function_color, Some(Attribute::Bold), src)?;
+                self.highlight_string(&call.function, function_style, src)?;
                 for arg in &call.arguments {
-                    self.highlight_argument(arg, src)?;
+                    self.highlight_argument(arg, src, style)?;
                 }
             }
             Expression::String(string) => {
-                self.highlight_string(string, None, None, src)?;
+                self.highlight_string(string, &style.editor.plain, src)?;
             }
             Expression::Noop => {}
         }
         Ok(())
     }
 
-    fn highlight_argument(&mut self, arg: &Argument, src: &str) -> std::io::Result<()> {
+    fn highlight_argument(
+        &mut self,
+        arg: &Argument,
+        src: &str,
+        style: &Style,
+    ) -> std::io::Result<()> {
         match arg {
             Argument::Plain(string) => {
-                self.highlight_string(string, None, None, src)?;
+                self.highlight_string(string, &style.editor.pos_argument, src)?;
             }
             Argument::Long(string) => {
-                self.highlight_string(string, Some(Color::Yellow), None, src)?;
+                self.highlight_string(string, &style.editor.keyword_argument, src)?;
             }
             Argument::Short(string) => {
-                self.highlight_string(string, Some(Color::Yellow), None, src)?;
+                self.highlight_string(string, &style.editor.keyword_argument, src)?;
             }
         }
         Ok(())
@@ -244,19 +263,14 @@ impl<'a> InputHighlighter<'a> {
     fn highlight_string(
         &mut self,
         string: &StringExpression,
-        foreground: Option<Color>,
-        attribute: Option<Attribute>,
+        style: &crate::output::style::Item,
         src: &str,
     ) -> std::io::Result<()> {
         self.unstyled_to(string.range.start(), src)?;
-        let mut styled = src[string.range].stylize();
-        if let Some(foreground) = foreground {
-            styled = styled.with(foreground);
-        }
-        if let Some(attribute) = attribute {
-            styled = styled.attribute(attribute);
-        }
-        self.buffer.execute(PrintStyledContent(styled))?;
+        self.buffer
+            .execute(style)?
+            .execute(Print(&src[string.range]))?
+            .execute(style.reset())?;
         self.pos = string.range.end();
         Ok(())
     }

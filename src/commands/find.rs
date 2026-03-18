@@ -8,10 +8,7 @@ use crate::output::{
 use crate::shell::Shell;
 use bumpalo::{Bump, collections::String as BumpString};
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser};
-use crossterm::{
-    ExecutableCommand, QueueableCommand,
-    style::{Attribute, Print, ResetColor, SetAttribute},
-};
+use crossterm::{ExecutableCommand, QueueableCommand, style::Print};
 use regex::{Match, Regex};
 use std::io::{Write, stdout};
 use std::ops::Deref;
@@ -177,7 +174,7 @@ fn write_matched_path<'q, Q: QueueableCommand>(
     location_type: hdf5::LocationType,
     printer: &Printer,
 ) -> std::io::Result<&'q mut Q> {
-    if !target.is_current() {
+    let base_style = if !target.is_current() {
         queue.queue(&printer.style().group)?.queue(Print(target))?;
         if !target.as_raw().ends_with('/') {
             queue.queue(Print('/'))?;
@@ -185,30 +182,22 @@ fn write_matched_path<'q, Q: QueueableCommand>(
 
         if location_type == hdf5::LocationType::Dataset {
             // Switch to the dataset style
-            queue
-                .queue(ResetColor)?
-                .queue(SetAttribute(Attribute::Reset))?
-                .queue(&printer.style().dataset)?;
-        } // else: stick with the group style
+            queue.queue(printer.style().reset())?;
+            &printer.style().dataset
+        } else {
+            &printer.style().group
+        }
     } else {
         match location_type {
-            hdf5::LocationType::Dataset => {
-                queue.queue(&printer.style().dataset)?;
-            }
-            hdf5::LocationType::Group => {
-                queue.queue(&printer.style().group)?;
-            }
-            _ => {
-                queue.queue(SetAttribute(Attribute::Reset))?;
-            }
+            hdf5::LocationType::Group => &printer.style().group,
+            _ => &printer.style().dataset,
         }
-    }
+    };
 
-    queue_with_highlight_range(queue, path.as_raw(), mat.range())?;
+    queue.queue(base_style)?;
+    queue_with_highlight_range(queue, path.as_raw(), mat.range(), printer, Some(base_style))?;
+    queue.queue(printer.style().reset())?;
 
-    queue
-        .queue(ResetColor)?
-        .queue(SetAttribute(Attribute::Reset))?;
     let character = match location_type {
         hdf5::LocationType::Dataset => DATASET_CHARACTER,
         hdf5::LocationType::Group => GROUP_CHARACTER,
@@ -376,17 +365,19 @@ fn write_attr_match<'e, Q: QueueableCommand>(
     value_match: Option<Match>,
     printer: &Printer,
 ) -> std::io::Result<&'e mut Q> {
-    queue
-        .queue(Print("  "))?
-        .queue(&printer.style().attribute)?;
-    queue_with_highlight_range(queue, attr_name, key_match.range())?;
-    queue
-        .queue(ResetColor)?
-        .queue(Print(" = "))?
-        .queue(SetAttribute(Attribute::Reset))?;
+    let base_style = &printer.style().attribute;
+    queue.queue(Print("  "))?.queue(base_style)?;
+    queue_with_highlight_range(
+        queue,
+        attr_name,
+        key_match.range(),
+        printer,
+        Some(base_style),
+    )?;
+    queue.queue(printer.style().reset())?.queue(Print(" = "))?;
 
     if let Some(mat) = value_match {
-        queue_with_highlight_range(queue, attr_value, mat.range())?;
+        queue_with_highlight_range(queue, attr_value, mat.range(), printer, None)?;
     } else {
         queue.queue(Print(attr_value))?;
     }
@@ -398,13 +389,18 @@ fn queue_with_highlight_range<'q, Q: QueueableCommand>(
     queue: &'q mut Q,
     string: &str,
     range: core::ops::Range<usize>,
+    printer: &Printer,
+    base_style: Option<&crate::output::style::Item>,
 ) -> std::io::Result<&'q mut Q> {
     queue
         .queue(Print(&string[..range.start]))?
-        .queue(SetAttribute(Attribute::Underlined))?
+        .queue(&printer.style().emphasis)?
         .queue(Print(&string[range.clone()]))?
-        .queue(SetAttribute(Attribute::NoUnderline))?
-        .queue(Print(&string[range.end..]))
+        .queue(printer.style().reset())?;
+    if let Some(base_style) = base_style {
+        queue.queue(base_style)?;
+    }
+    queue.queue(Print(&string[range.end..]))
 }
 
 impl FromStr for Pattern {
@@ -564,7 +560,10 @@ mod tests {
 
     mod printer {
         use super::super::*;
-        use crossterm::execute;
+        use crossterm::{
+            execute,
+            style::{Attribute, Print, ResetColor, SetAttribute},
+        };
 
         fn write_match(
             target: &H5Path,
@@ -574,7 +573,7 @@ mod tests {
         ) -> String {
             let mat = Regex::new(pattern).unwrap().find(path.as_raw()).unwrap();
 
-            let printer = Printer::new();
+            let printer = Printer::new(true);
             let mut buffer: Vec<u8> = Vec::new();
             write_matched_path(&mut buffer, target, path, mat, location_type, &printer).unwrap();
             String::from_utf8(buffer).unwrap()
@@ -592,7 +591,6 @@ mod tests {
                 Print("f"),
                 SetAttribute(Attribute::Underlined),
                 Print("oo"),
-                SetAttribute(Attribute::NoUnderline),
                 ResetColor,
                 SetAttribute(Attribute::Reset),
                 Print("\n")
@@ -612,15 +610,15 @@ mod tests {
             let mut buffer: Vec<u8> = Vec::new();
             execute!(
                 buffer,
-                &Printer::new().style().group,
+                &Printer::new(true).style().group,
                 Print("g"),
                 SetAttribute(Attribute::Underlined),
                 Print("rou"),
-                SetAttribute(Attribute::NoUnderline),
+                ResetColor,
+                &Printer::new(true).style().group,
                 Print("p"),
                 // Some extra reset in case the dataset style is different from the default:
                 ResetColor,
-                SetAttribute(Attribute::Reset),
                 Print("/\n")
             )
             .unwrap();
@@ -638,13 +636,11 @@ mod tests {
             let mut buffer: Vec<u8> = Vec::new();
             execute!(
                 buffer,
-                &Printer::new().style().group,
+                &Printer::new(true).style().group,
                 Print("folder/"),
                 ResetColor,
-                SetAttribute(Attribute::Reset),
                 SetAttribute(Attribute::Underlined),
                 Print("foo"),
-                SetAttribute(Attribute::NoUnderline),
                 ResetColor,
                 SetAttribute(Attribute::Reset),
                 Print("\n")
@@ -664,14 +660,12 @@ mod tests {
             let mut buffer: Vec<u8> = Vec::new();
             execute!(
                 buffer,
-                &Printer::new().style().group,
+                &Printer::new(true).style().group,
                 Print("folder/"),
                 ResetColor,
-                SetAttribute(Attribute::Reset),
                 Print("f"),
                 SetAttribute(Attribute::Underlined),
                 Print("oo"),
-                SetAttribute(Attribute::NoUnderline),
                 ResetColor,
                 SetAttribute(Attribute::Reset),
                 Print("\n")
@@ -691,14 +685,16 @@ mod tests {
             let mut buffer: Vec<u8> = Vec::new();
             execute!(
                 buffer,
-                &Printer::new().style().group,
-                Print("folder/g"),
+                &Printer::new(true).style().group,
+                Print("folder/"),
+                &Printer::new(true).style().group,
+                Print("g"),
                 SetAttribute(Attribute::Underlined),
                 Print("rou"),
-                SetAttribute(Attribute::NoUnderline),
+                ResetColor,
+                &Printer::new(true).style().group,
                 Print("p"),
                 ResetColor,
-                SetAttribute(Attribute::Reset),
                 Print("/\n")
             )
             .unwrap();

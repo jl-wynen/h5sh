@@ -1,8 +1,5 @@
-use clap::{Args, CommandFactory, Parser};
-use crossterm::{
-    queue,
-    style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
-};
+use clap::{Args, CommandFactory, Parser, ValueEnum};
+use crossterm::{queue, style::Print};
 use std::path::PathBuf;
 use std::process::exit;
 
@@ -35,6 +32,10 @@ enum CliCommands {
 struct CliOpenArgs {
     /// HDF5 file to open.
     pub path: Option<PathBuf>,
+
+    /// Control color output.
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
+    pub color: ColorChoice,
 }
 
 #[derive(Args, Debug)]
@@ -66,11 +67,19 @@ pub enum Commands {
 #[derive(Debug)]
 pub struct OpenArgs {
     pub path: PathBuf,
+    pub color: bool,
 }
 
 #[derive(Debug)]
 pub struct SelfArgs {
     pub command: SelfCommand,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum ColorChoice {
+    Auto,
+    Always,
+    Never,
 }
 
 impl Arguments {
@@ -112,23 +121,28 @@ fn normalize_open_args(open_args: CliOpenArgs) -> OpenArgs {
     let Some(path) = open_args.path else {
         usage_error("Specify a path to open.");
     };
-    OpenArgs { path }
+    OpenArgs {
+        path,
+        color: normalize_color_choice(open_args.color),
+    }
+}
+
+fn normalize_color_choice(arg: ColorChoice) -> bool {
+    match arg {
+        ColorChoice::Always => true,
+        ColorChoice::Never => false,
+        ColorChoice::Auto => !std::env::var("NO_COLOR").is_ok_and(|value| !value.is_empty()),
+    }
 }
 
 fn usage_error(message: &str) -> ! {
     let _ = queue!(
         std::io::stdout(),
-        SetForegroundColor(Color::DarkRed),
         Print("error: "),
-        ResetColor,
         Print(message),
         Print("\n\n"),
         Print(CliArguments::command().render_usage()),
-        Print("\n\nFor more information try '"),
-        SetAttribute(Attribute::Bold),
-        Print("--help"),
-        SetAttribute(Attribute::NoBold),
-        Print("'\n"),
+        Print("\n\nFor more information try '--help'\n"),
     );
     exit(2);
 }

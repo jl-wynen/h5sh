@@ -13,10 +13,10 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new() -> Self {
+    pub fn new(stylize_output: bool) -> Self {
         Self {
             working_group: H5Path::root(),
-            printer: Printer::new(),
+            printer: Printer::new(stylize_output),
             commands: cmd::Commands::new(),
         }
     }
@@ -46,7 +46,11 @@ impl Shell {
     }
 
     pub fn start_editor<'f>(&self, file: &'f H5File) -> rustyline::Result<LineEditor<'f>> {
-        LineEditor::new(self.commands.keys().cloned().collect(), file)
+        LineEditor::new(
+            self.commands.keys().cloned().collect(),
+            file,
+            self.printer().style(),
+        )
     }
 
     pub fn parse_and_execute_input(&mut self, input: &str, h5file: &H5File) -> CommandOutcome {

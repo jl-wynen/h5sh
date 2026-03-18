@@ -796,7 +796,6 @@ dependencies = [
  "dirs",
  "hdf5-metno",
  "indexmap",
- "lazy_static",
  "log",
  "lscolors",
  "ndarray",
