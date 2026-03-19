@@ -30,7 +30,7 @@ pub(super) fn queue_object_table<'q, Q: Write>(
         let used_width: usize = widths.iter().sum();
         let (full_width, _) = printer.terminal_size();
         // -4 for spacing between columns
-        let available_width = full_width as usize - used_width - 5 - 1;
+        let available_width = (full_width as usize).saturating_sub(used_width + 5 + 1);
 
         let content_column = build_content_column(&bump, objects, available_width, printer)?;
         widths.push(content_column.max_width());
