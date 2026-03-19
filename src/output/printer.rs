@@ -36,7 +36,7 @@ impl Printer {
             GridOptions {
                 filling: Filling::Spaces(2),
                 direction: Direction::TopToBottom,
-                width: terminal_width(),
+                width: self.terminal_size().0 as usize,
             },
         );
         let _ = stdout().write_all(grid.to_string().as_bytes());
@@ -235,16 +235,21 @@ impl Printer {
     }
 
     pub fn terminal_size(&self) -> (u16, u16) {
-        crossterm::terminal::size().unwrap_or((48, 128))
+        let inferred = crossterm::terminal::size().unwrap_or((48, 128));
+        if let Ok(width) = std::env::var("COLUMNS") {
+            if let Ok(int_width) = width.parse() {
+                (int_width, inferred.1)
+            } else {
+                inferred
+            }
+        } else {
+            inferred
+        }
     }
 }
 
 const BYTE_UNITS_SHORT: [&str; 5] = ["B ", "Ki", "Mi", "Gi", "Ti"];
 const BYTE_UNITS_LONG: [&str; 5] = ["B  ", "KiB", "MiB", "GiB", "TiB"];
-
-fn terminal_width() -> usize {
-    crossterm::terminal::window_size().map_or(96, |size| size.columns as usize)
-}
 
 const PADDING_BUFFER: &str = "                                    ";
 struct Padding(usize);
