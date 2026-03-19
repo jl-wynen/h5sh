@@ -1,3 +1,6 @@
+// rexpect does not work on Windows.
+#![cfg(not(target_os = "windows"))]
+
 use rexpect::session::{PtyReplSession, spawn_command};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};

@@ -33,10 +33,11 @@ hdf5 = { package = "hdf5-metno", version = "0.10", features = ["f16", "static"] 
 ndarray = "0.16"
 
 [dev-dependencies]
-escargot = "0.5.15"
 pretty_assertions = "1.4.1"
+
+[target.'cfg(not(target_os = "windows"))'.dev-dependencies]
+escargot = "0.5.15"
 rexpect = "0.7.0"
-expectrl = "0.8.0"
 
 [profile.release]
 lto = 'thin'
