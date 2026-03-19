@@ -47,14 +47,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-           - target: x86_64-unknown-linux-gnu
-             os: ubuntu-24.04
-           - target: centos-7
-             os: ubuntu-24.04
-           - target: aarch64-apple-darwin
-             os: macos-15
-           - target: x86_64-pc-windows-msvc
-             os: windows-2025
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - target: centos-7
+            os: ubuntu-24.04
+          - target: aarch64-apple-darwin
+            os: macos-15
+          - target: x86_64-pc-windows-msvc
+            os: windows-2025
     env:
       RUSTFLAGS: -D warnings
     steps:
@@ -77,9 +77,14 @@ jobs:
         if: "matrix.target == 'centos-7'"
         # Using the x86_64-unknown-linux-gnu with cross triggers a CentOS-7 build.
         run: cross build --verbose --target "x86_64-unknown-linux-gnu"
-      - name: Run tests [Cargo]
-        if: "matrix.target != 'centos-7'"
+
+      - name: Run all tests [Cargo]
+        # The integration tests do not work on Windows because they use rexpect.
+        if: "matrix.target != 'centos-7' && !contains(matrix.target, 'windows')"
         run: cargo test --verbose --target "${{ matrix.target }}"
+      - name: Run unit tests [Cargo]
+        if: "contains(matrix.target, 'windows')"
+        run: cargo test --verbose --target "${{ matrix.target }}" --bins
       - name: Run tests [Cross]
         if: "matrix.target == 'centos-7'"
         run: cross test --verbose --target "x86_64-unknown-linux-gnu"
