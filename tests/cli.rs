@@ -34,7 +34,7 @@ fn launch_h5sh() -> PtyReplSession {
         .arg("--color=never")
         .env("COLUMNS", "80");
 
-    let mut h5sh = PtyReplSession::new(spawn_command(cmd, Some(2000)).unwrap(), "$".to_owned())
+    let mut h5sh = PtyReplSession::new(spawn_command(cmd, Some(200)).unwrap(), "$".to_owned())
         // h5sh echoes the input back to stdout
         .echo_on(true)
         .quit_command(Some("exit".to_owned()));
@@ -80,6 +80,16 @@ fn assert_output_contains(actual: impl AsRef<str>, expected: &str) {
     );
 }
 
+fn assert_output_lines(actual: Vec<impl AsRef<str>>, expected: Vec<&str>) {
+    for (a, e) in actual.iter().zip(expected.iter()) {
+        assert!(
+            a.as_ref().starts_with(e),
+            "Expected '{}' to  start with '{e}'",
+            a.as_ref()
+        );
+    }
+}
+
 #[test]
 fn cd_and_pwd() -> Result<(), Box<dyn std::error::Error>> {
     let mut h5sh = launch_h5sh();
@@ -109,7 +119,33 @@ fn ls_from_root() -> Result<(), Box<dyn std::error::Error>> {
 
     send_command_no_output(&mut h5sh, "ls base");
     let output = read_all_lines(&mut h5sh);
-    assert_eq!(output, vec!["g_empty/  label-utf8  short  sub-group/"]);
+    assert_eq!(
+        output,
+        vec!["g_empty/  label-utf8  long_array  short  sub-group/"]
+    );
+
+    Ok(())
+}
+
+#[test]
+fn ls_l() -> Result<(), Box<dyn std::error::Error>> {
+    let mut h5sh = launch_h5sh();
+    send_command_no_output(&mut h5sh, "ls -l base");
+    let output = read_all_lines(&mut h5sh);
+
+    let expected_lines = vec![
+        "            grp      g_empty/",
+        "()     16B  utf-8    label-utf8 This is a UTF-8 dataset",
+        "(1030)  8Ki f64      long_array [0, 1, 2, 3, 4, 5, 6, 7 ...",
+        "()      6B  ascii(6) short      shorty",
+        "            grp      sub-group/",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
 
     Ok(())
 }
@@ -120,6 +156,91 @@ fn ls_empty_group() -> Result<(), Box<dyn std::error::Error>> {
     send_command_no_output(&mut h5sh, "cd base/g_empty");
     send_command_no_output(&mut h5sh, "ls");
     assert_eq!(read_all_lines(&mut h5sh), Vec::<String>::new());
+    Ok(())
+}
+
+#[test]
+fn attr() -> Result<(), Box<dyn std::error::Error>> {
+    let mut h5sh = launch_h5sh();
+    send_command_no_output(&mut h5sh, "a base/sub-group");
+    let output = read_all_lines(&mut h5sh);
+
+    let expected_lines = vec![
+        "(4) 32B  i64   array@ [1, 2, 5, 6]",
+        "()  16B  ascii ascii@ English only",
+        "()  16B  utf-8 class@ TestGroup",
+    ];
+    assert_output_lines(output, expected_lines);
+
+    Ok(())
+}
+
+#[test]
+fn cat() -> Result<(), Box<dyn std::error::Error>> {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "cat base/label-utf8");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec!["This is a UTF-8 dataset"];
+    assert_output_lines(output, expected_lines);
+
+    send_command_no_output(&mut h5sh, "cat base/long_array");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec!["[0, 1, 2, 3, 4, ..., 1025, 1026, 1027, 1028, 1029]"];
+    assert_output_lines(output, expected_lines);
+
+    Ok(())
+}
+
+#[test]
+fn fd_location() -> Result<(), Box<dyn std::error::Error>> {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "fd utf8");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec!["base/label-utf8"];
+    assert_output_lines(output, expected_lines);
+
+    send_command_no_output(&mut h5sh, "fd empty");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec!["base/g_empty"];
+    assert_output_lines(output, expected_lines);
+
+    Ok(())
+}
+
+#[test]
+fn fd_attr() -> Result<(), Box<dyn std::error::Error>> {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "fd @testo");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec![
+        "base/label-utf8",
+        "  testo1 = test attribute 1",
+        "  testo2 = another attribute",
+        "base/sub-group/nested_ds",
+        "  testo = nested ds",
+    ];
+    assert_output_lines(output, expected_lines);
+
+    send_command_no_output(&mut h5sh, "fd @test=other");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec!["base/label-utf8", "  testo2 = another attribute"];
+    assert_output_lines(output, expected_lines);
+
+    Ok(())
+}
+
+#[test]
+fn help() -> Result<(), Box<dyn std::error::Error>> {
+    let mut h5sh = launch_h5sh();
+    send_command_no_output(&mut h5sh, "help");
+    let output = read_all_lines(&mut h5sh);
+    // `help` lists a command:
+    assert!(output.iter().filter(|line| line.contains("ls")).count() > 0);
+    // `help` lists an alias:
+    assert!(output.iter().filter(|line| line.contains("..")).count() > 0);
     Ok(())
 }
 

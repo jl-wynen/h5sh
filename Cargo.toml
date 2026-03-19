@@ -36,6 +36,7 @@ ndarray = "0.16"
 escargot = "0.5.15"
 pretty_assertions = "1.4.1"
 rexpect = "0.7.0"
+expectrl = "0.8.0"
 
 [profile.release]
 lto = 'thin'
