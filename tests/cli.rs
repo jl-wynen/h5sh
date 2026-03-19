@@ -1,4 +1,4 @@
-use rexpect::{session::PtyReplSession, spawn};
+use rexpect::session::{PtyReplSession, spawn_command};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -29,17 +29,15 @@ fn exe_path() -> String {
 
 /** Launch h5sh as an interactive PTY session. */
 fn launch_h5sh() -> PtyReplSession {
-    let mut h5sh = PtyReplSession::new(
-        spawn(
-            &format!("{} {}", exe_path(), data_path("test.h5")),
-            Some(2000),
-        )
-        .unwrap(),
-        "$".to_owned(),
-    )
-    // h5sh echoes the input back to stdout
-    .echo_on(true)
-    .quit_command(Some("exit".to_owned()));
+    let mut cmd = Command::new(exe_path());
+    cmd.arg(data_path("test.h5"))
+        .arg("--color=never")
+        .env("COLUMNS", "80");
+
+    let mut h5sh = PtyReplSession::new(spawn_command(cmd, Some(2000)).unwrap(), "$".to_owned())
+        // h5sh echoes the input back to stdout
+        .echo_on(true)
+        .quit_command(Some("exit".to_owned()));
     h5sh.wait_for_prompt().unwrap();
     h5sh
 }
@@ -111,7 +109,7 @@ fn ls_from_root() -> Result<(), Box<dyn std::error::Error>> {
 
     send_command_no_output(&mut h5sh, "ls base");
     let output = read_all_lines(&mut h5sh);
-    assert_eq!(output, vec!["g_empty/", "label-utf8", "sub-group/"]);
+    assert_eq!(output, vec!["g_empty/  label-utf8  short  sub-group/"]);
 
     Ok(())
 }

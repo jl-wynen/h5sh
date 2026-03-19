@@ -33,9 +33,7 @@ hdf5 = { package = "hdf5-metno", version = "0.10", features = ["f16", "static"] 
 ndarray = "0.16"
 
 [dev-dependencies]
-assert_cmd = "2.2.0"
 escargot = "0.5.15"
-predicates = "3.1.4"
 pretty_assertions = "1.4.1"
 rexpect = "0.7.0"
 
