@@ -6,33 +6,173 @@ pub const DATASET_CHARACTER: Option<char> = None;
 pub const GROUP_CHARACTER: Option<char> = Some('/');
 pub const ATTRIBUTE_CHARACTER: Option<char> = Some('@');
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Style {
     pub dataset: Item,
     pub group: Item,
     pub attribute: Item,
+    pub size: Item,
+    pub shape: Item,
+    pub dtype: Item,
+    pub error: Item,
+    pub critical_error: Item,
+    pub placeholder: Item,
+    pub emphasis: Item,
+
+    pub prompt: Prompt,
+    pub editor: Editor,
+
+    enabled: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Default)]
+pub struct Prompt {
+    pub file_name: Item,
+    pub working_group: Item,
+    pub char: Item,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Editor {
+    pub plain: Item,
+    pub pos_argument: Item,
+    pub keyword_argument: Item,
+    pub command: Item,
+    pub bad_command: Item,
+}
+
+#[derive(Clone, Debug)]
 pub struct Item {
     colors: Colors,
     attributes: Attributes,
 }
 
-impl Style {
-    pub fn new() -> Self {
-        let ls_colors = LsColors::from_env().unwrap_or_default();
+pub struct Reset {
+    enabled: bool,
+}
 
-        Self {
-            dataset: Item::from_lscolors(&ls_colors, Indicator::RegularFile),
-            group: Item::from_lscolors(&ls_colors, Indicator::Directory),
-            attribute: Item {
-                colors: Colors {
-                    foreground: Some(Color::DarkCyan),
-                    background: None,
+impl Style {
+    pub fn new(enabled: bool) -> Self {
+        if enabled {
+            let ls_colors = LsColors::from_env().unwrap_or_default();
+
+            Self {
+                dataset: Item::from_lscolors(&ls_colors, Indicator::RegularFile),
+                group: Item::from_lscolors(&ls_colors, Indicator::Directory),
+                attribute: Item {
+                    colors: Colors {
+                        foreground: Some(Color::DarkCyan),
+                        background: None,
+                    },
+                    attributes: Attributes::default(),
                 },
-                attributes: Attributes::default(),
-            },
+                size: Item {
+                    colors: Colors {
+                        foreground: Some(Color::DarkGreen),
+                        background: None,
+                    },
+                    attributes: Attributes::default(),
+                },
+                shape: Item {
+                    colors: Colors {
+                        foreground: Some(Color::DarkCyan),
+                        background: None,
+                    },
+                    attributes: Attributes::default(),
+                },
+                dtype: Item {
+                    colors: Colors {
+                        foreground: Some(Color::DarkMagenta),
+                        background: None,
+                    },
+                    attributes: Attributes::default(),
+                },
+                critical_error: Item {
+                    colors: Colors {
+                        foreground: Some(Color::Red),
+                        background: None,
+                    },
+                    attributes: Attributes::default(),
+                },
+                error: Item {
+                    colors: Colors {
+                        foreground: Some(Color::DarkRed),
+                        background: None,
+                    },
+                    attributes: Attributes::default(),
+                },
+                placeholder: Item {
+                    colors: Colors {
+                        foreground: Some(Color::DarkGrey),
+                        background: None,
+                    },
+                    attributes: Attributes::default(),
+                },
+                emphasis: Item {
+                    colors: Colors {
+                        foreground: None,
+                        background: None,
+                    },
+                    attributes: Attribute::Underlined.into(),
+                },
+                prompt: Prompt {
+                    file_name: Item {
+                        colors: Colors {
+                            foreground: Some(Color::DarkYellow),
+                            background: None,
+                        },
+                        attributes: Attributes::default(),
+                    },
+                    working_group: Item {
+                        colors: Colors {
+                            foreground: None,
+                            background: None,
+                        },
+                        attributes: Attributes::default(),
+                    },
+                    char: Item {
+                        colors: Colors {
+                            foreground: Some(Color::DarkRed),
+                            background: None,
+                        },
+                        attributes: Attributes::default(),
+                    },
+                },
+                editor: Editor {
+                    plain: Item::default(),
+                    pos_argument: Item::default(),
+                    keyword_argument: Item {
+                        colors: Colors {
+                            foreground: Some(Color::Yellow),
+                            background: None,
+                        },
+                        attributes: Attributes::default(),
+                    },
+                    command: Item {
+                        colors: Colors {
+                            foreground: Some(Color::White),
+                            background: None,
+                        },
+                        attributes: Attribute::Bold.into(),
+                    },
+                    bad_command: Item {
+                        colors: Colors {
+                            foreground: Some(Color::Red),
+                            background: None,
+                        },
+                        attributes: Attribute::Bold.into(),
+                    },
+                },
+                enabled: true,
+            }
+        } else {
+            Self::default()
+        }
+    }
+
+    pub fn reset(&self) -> Reset {
+        Reset {
+            enabled: self.enabled,
         }
     }
 }
@@ -49,6 +189,18 @@ impl Item {
             },
             attributes: convert_ls_attributes(style.font_style),
         }
+    }
+
+    pub fn reset(&self) -> Reset {
+        Reset {
+            enabled: !self.is_default(),
+        }
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.colors.foreground.is_none()
+            && self.colors.background.is_none()
+            && self.attributes.is_empty()
     }
 }
 
@@ -82,6 +234,37 @@ impl crossterm::Command for Item {
     fn is_ansi_code_supported(&self) -> bool {
         SetColors(self.colors).is_ansi_code_supported()
             && SetAttributes(self.attributes).is_ansi_code_supported()
+    }
+}
+
+impl crossterm::Command for Reset {
+    fn write_ansi(&self, f: &mut impl Write) -> std::fmt::Result {
+        if self.enabled {
+            crossterm::style::ResetColor.write_ansi(f)?;
+            SetAttributes(Attributes::none()).write_ansi(f)
+        } else {
+            Ok(())
+        }
+    }
+
+    #[cfg(windows)]
+    fn execute_winapi(&self) -> std::io::Result<()> {
+        if self.enabled {
+            crossterm::style::ResetColor.execute_winapi()?;
+            SetAttributes(Attributes::none()).execute_winapi()
+        } else {
+            Ok(())
+        }
+    }
+
+    #[cfg(windows)]
+    fn is_ansi_code_supported(&self) -> bool {
+        if self.enabled {
+            crossterm::style::ResetColor.is_ansi_code_supported()
+                && SetAttributes(Attributes::none()).is_ansi_code_supported()
+        } else {
+            true
+        }
     }
 }
 

@@ -1,8 +1,5 @@
 use anyhow::Result;
-use crossterm::{
-    ExecutableCommand,
-    style::{Attributes, Color, Print, ResetColor, SetAttributes, SetForegroundColor},
-};
+use crossterm::{ExecutableCommand, style::Print};
 use std::path::PathBuf;
 
 use crate::h5::H5File;
@@ -13,28 +10,27 @@ pub struct Prompt {
 }
 
 impl Prompt {
-    pub fn new() -> Self {
+    pub fn new(style: &crate::output::Style) -> Self {
         Self {
             modules: vec![
                 Module::FileName {
                     style: Style {
-                        color: Color::DarkYellow,
+                        item: style.prompt.file_name.clone(),
                         ..Default::default()
                     },
                 },
                 Module::WorkingGroup {
                     style: Style {
-                        color: Color::Reset,
+                        item: style.prompt.working_group.clone(),
                         ..Default::default()
                     },
                 },
                 Module::Char {
                     c: String::from("$"),
                     style: Style {
-                        color: Color::DarkRed,
+                        item: style.prompt.char.clone(),
                         padding_left: 1,
                         padding_right: 1,
-                        ..Default::default()
                     },
                 },
             ],
@@ -61,22 +57,11 @@ enum Module {
     Char { c: String, style: Style },
 }
 
+#[derive(Default)]
 struct Style {
-    color: Color,
-    attributes: Attributes,
+    item: crate::output::style::Item,
     padding_left: usize,
     padding_right: usize,
-}
-
-impl Default for Style {
-    fn default() -> Self {
-        Self {
-            color: Color::Grey,
-            attributes: Attributes::none(),
-            padding_left: 0,
-            padding_right: 0,
-        }
-    }
 }
 
 impl Module {
@@ -133,14 +118,12 @@ impl Style {
         if self.padding_left > 0 {
             out.execute(Print(" ".repeat(self.padding_left)))?;
         }
-        out.execute(SetForegroundColor(self.color))?
-            .execute(SetAttributes(self.attributes))?;
+        out.execute(&self.item)?;
         Ok(())
     }
 
     fn end<Out: ExecutableCommand>(&self, out: &mut Out) -> Result<()> {
-        out.execute(ResetColor)?
-            .execute(SetAttributes(Attributes::none()))?;
+        out.execute(self.item.reset())?;
         if self.padding_right > 0 {
             out.execute(Print(" ".repeat(self.padding_right)))?;
         }

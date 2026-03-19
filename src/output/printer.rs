@@ -6,10 +6,7 @@ use bumpalo::{
     Bump,
     collections::{String as BumpString, Vec as BumpVec},
 };
-use crossterm::{
-    QueueableCommand, execute, queue,
-    style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
-};
+use crossterm::{QueueableCommand, execute, queue, style::Print};
 use hdf5::{
     Location, LocationType,
     types::{FloatSize, IntSize, Reference, TypeDescriptor},
@@ -23,9 +20,9 @@ pub struct Printer {
 }
 
 impl Printer {
-    pub fn new() -> Self {
+    pub fn new(stylize: bool) -> Self {
         Self {
-            style: Style::new(),
+            style: Style::new(stylize),
         }
     }
 
@@ -39,7 +36,7 @@ impl Printer {
             GridOptions {
                 filling: Filling::Spaces(2),
                 direction: Direction::TopToBottom,
-                width: terminal_width(),
+                width: self.terminal_size().0 as usize,
             },
         );
         let _ = stdout().write_all(grid.to_string().as_bytes());
@@ -51,10 +48,10 @@ impl Printer {
             CommandError::Error(message) => {
                 let _ = queue!(
                     stderr,
-                    SetForegroundColor(Color::DarkRed),
+                    &self.style().error,
                     Print("Error: "),
                     Print(message),
-                    ResetColor,
+                    self.style().reset(),
                     Print("\n"),
                 );
             }
@@ -62,11 +59,11 @@ impl Printer {
             CommandError::Critical(message) => {
                 let _ = queue!(
                     stderr,
-                    SetForegroundColor(Color::Red),
+                    &self.style().critical_error,
                     Print("CRITICAL ERROR: "),
-                    SetForegroundColor(Color::DarkRed),
+                    &self.style().error,
                     Print(message),
-                    ResetColor,
+                    self.style().reset(),
                     Print("\n"),
                 );
             }
@@ -78,9 +75,9 @@ impl Printer {
         let mut stderr = stderr();
         let _ = queue!(
             stderr,
-            SetForegroundColor(Color::DarkRed),
+            &self.style().error,
             Print(message),
-            ResetColor,
+            self.style().reset(),
             Print("\n"),
         );
         let _ = stderr.flush();
@@ -98,13 +95,7 @@ impl Printer {
             H5Object::Group(_) => (&self.style().group, GROUP_CHARACTER),
             H5Object::Attribute(_) => (&self.style().attribute, ATTRIBUTE_CHARACTER),
         };
-        let _ = execute!(
-            buffer,
-            style,
-            Print(name),
-            ResetColor,
-            SetAttribute(Attribute::Reset),
-        );
+        let _ = execute!(buffer, style, Print(name), self.style().reset(),);
         if let Some(character) = character {
             let _ = execute!(buffer, Print(character));
         }
@@ -123,13 +114,7 @@ impl Printer {
             Ok(LocationType::Group) => (&self.style().group, GROUP_CHARACTER),
             _ => (&self.style.dataset, None),
         };
-        let _ = execute!(
-            buffer,
-            style,
-            Print(name),
-            ResetColor,
-            SetAttribute(Attribute::Reset),
-        );
+        let _ = execute!(buffer, style, Print(name), self.style().reset(),);
         if let Some(character) = character {
             let _ = execute!(buffer, Print(character));
         }
@@ -151,7 +136,7 @@ impl Printer {
             if !parent.as_raw().ends_with('/') {
                 let _ = execute!(buffer, Print('/'));
             }
-            let _ = execute!(buffer, ResetColor, SetAttribute(Attribute::Reset));
+            let _ = execute!(buffer, self.style().reset(),);
         }
         let parent_str = BumpString::from_utf8(buffer).unwrap_or_else(|_| BumpString::new_in(bump));
 
@@ -250,16 +235,21 @@ impl Printer {
     }
 
     pub fn terminal_size(&self) -> (u16, u16) {
-        crossterm::terminal::size().unwrap_or((48, 128))
+        let inferred = crossterm::terminal::size().unwrap_or((48, 128));
+        if let Ok(width) = std::env::var("COLUMNS") {
+            if let Ok(int_width) = width.parse() {
+                (int_width, inferred.1)
+            } else {
+                inferred
+            }
+        } else {
+            inferred
+        }
     }
 }
 
 const BYTE_UNITS_SHORT: [&str; 5] = ["B ", "Ki", "Mi", "Gi", "Ti"];
 const BYTE_UNITS_LONG: [&str; 5] = ["B  ", "KiB", "MiB", "GiB", "TiB"];
-
-fn terminal_width() -> usize {
-    crossterm::terminal::window_size().map_or(96, |size| size.columns as usize)
-}
 
 const PADDING_BUFFER: &str = "                                    ";
 struct Padding(usize);
