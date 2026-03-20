@@ -124,7 +124,7 @@ fn ls_from_root() -> Result<(), Box<dyn std::error::Error>> {
     let output = read_all_lines(&mut h5sh);
     assert_eq!(
         output,
-        vec!["g_empty/  label-utf8  long_array  short  sub-group/"]
+        vec!["booleans/  g_empty/  label-utf8  long_array  short  sub-group/"]
     );
 
     Ok(())
@@ -136,7 +136,8 @@ fn ls_l() -> Result<(), Box<dyn std::error::Error>> {
     send_command_no_output(&mut h5sh, "ls -l base");
     let output = read_all_lines(&mut h5sh);
 
-    let expected_lines = vec![
+    let expected_lines = [
+        "            grp      booleans/",
         "            grp      g_empty/",
         "()     16B  utf-8    label-utf8 This is a UTF-8 dataset",
         "(1030)  8Ki f64      long_array [0, 1, 2, 3, 4, 5, 6, 7 ...",
@@ -231,6 +232,55 @@ fn fd_attr() -> Result<(), Box<dyn std::error::Error>> {
     let output = read_all_lines(&mut h5sh);
     let expected_lines = vec!["base/label-utf8", "  testo2 = another attribute"];
     assert_output_lines(output, expected_lines);
+
+    Ok(())
+}
+
+#[test]
+fn inspect_boolean() -> Result<(), Box<dyn std::error::Error>> {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "inspect base/booleans/all_true");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: bool",
+        "Shape: [3]  Volume: 3  Size: 3B",
+        "All true: true  Any true: true",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+
+    send_command_no_output(&mut h5sh, "inspect base/booleans/all_false");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: bool",
+        "Shape: [4]  Volume: 4  Size: 4B",
+        "All true: false  Any true: false",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+
+    send_command_no_output(&mut h5sh, "inspect base/booleans/mixed");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: bool",
+        "Shape: [5]  Volume: 5  Size: 5B",
+        "All true: false  Any true: true",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
 
     Ok(())
 }

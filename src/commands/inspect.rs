@@ -1,5 +1,5 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
-use crate::h5::{H5Attribute, H5Dataset, H5Error, H5File, H5Group, H5Object, H5Path};
+use crate::h5::{H5Attribute, H5Dataset, H5File, H5Group, H5Object, H5Path};
 use crate::output::Printer;
 use crate::shell::Shell;
 use bumpalo::{
@@ -93,18 +93,10 @@ pub fn load_and_inspect_data<'alloc>(
         TypeDescriptor::VarLenAscii => var_len_ascii(container, printer, bump),
         TypeDescriptor::FixedUnicode(n) => fixed_len_unicode(container, n, printer, bump),
         TypeDescriptor::FixedAscii(n) => fixed_len_ascii(container, n, printer, bump),
-        // TypeDescriptor::Float(float_size) => crate::data::load_and_format::float(
-        //     container, float_size, max_elem, max_width, printer, bump,
-        // ),
-        // TypeDescriptor::Integer(int_size) => crate::data::load_and_format::signed_integer(
-        //     container, int_size, max_elem, max_width, printer, bump,
-        // ),
-        // TypeDescriptor::Unsigned(int_size) => crate::data::load_and_format::unsigned_integer(
-        //     container, int_size, max_elem, max_width, printer, bump,
-        // ),
-        // TypeDescriptor::Boolean => {
-        //     crate::data::load_and_format::bool(container, max_elem, max_width, printer, bump)
-        // }
+        TypeDescriptor::Float(float_size) => any_float(container, float_size, printer, bump),
+        TypeDescriptor::Integer(int_size) => any_signed_int(container, int_size, printer, bump),
+        TypeDescriptor::Unsigned(int_size) => any_unsigned_int(container, int_size, printer, bump),
+        TypeDescriptor::Boolean => boolean(container, printer, bump),
         descriptor => Err(CommandError::Error(std::format!(
             "dtype not supported: {}",
             printer.format_dtype(&descriptor, bump)
@@ -175,10 +167,269 @@ fn string<'alloc, T: H5Type + Display + Deref<Target = str>>(
     .execute(Print("\n"))?;
 
     write_item_debug(&mut buffer, "Shape", content.shape(), printer, bump)?.execute(Print("  "))?;
-    write_item(&mut buffer, "Size", content.len(), printer)?.execute(Print("\n"))?;
+    write_item(&mut buffer, "Volume", content.len(), printer)?.execute(Print("\n"))?;
 
     let all_ascii = content.iter().all(|item| item.is_ascii());
     write_item(&mut buffer, "All ASCII", all_ascii, printer)?;
+
+    Ok(buffer)
+}
+
+fn any_float<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    float_size: FloatSize,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    match float_size {
+        FloatSize::U8 => number::<f64>(container, printer, bump),
+        FloatSize::U4 => number::<f32>(container, printer, bump),
+        // f16 is unstable, so approximate using f32
+        FloatSize::U2 => number::<f32>(container, printer, bump),
+    }
+}
+
+fn any_signed_int<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    int_size: IntSize,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    match int_size {
+        IntSize::U8 => number::<i64>(container, printer, bump),
+        IntSize::U4 => number::<i32>(container, printer, bump),
+        IntSize::U2 => number::<i16>(container, printer, bump),
+        IntSize::U1 => number::<i8>(container, printer, bump),
+    }
+}
+
+fn any_unsigned_int<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    int_size: IntSize,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    match int_size {
+        IntSize::U8 => number::<u64>(container, printer, bump),
+        IntSize::U4 => number::<u32>(container, printer, bump),
+        IntSize::U2 => number::<u16>(container, printer, bump),
+        IntSize::U1 => number::<u8>(container, printer, bump),
+    }
+}
+
+trait IsNonFinite {
+    fn can_be_non_finite() -> bool {
+        false
+    }
+
+    fn is_nan(&self) -> bool {
+        false
+    }
+
+    fn is_inf(&self) -> bool {
+        false
+    }
+}
+
+impl IsNonFinite for f64 {
+    fn can_be_non_finite() -> bool {
+        true
+    }
+
+    fn is_nan(&self) -> bool {
+        f64::is_nan(*self)
+    }
+
+    fn is_inf(&self) -> bool {
+        f64::is_infinite(*self)
+    }
+}
+
+impl IsNonFinite for f32 {
+    fn can_be_non_finite() -> bool {
+        true
+    }
+
+    fn is_nan(&self) -> bool {
+        f32::is_nan(*self)
+    }
+
+    fn is_inf(&self) -> bool {
+        f32::is_infinite(*self)
+    }
+}
+
+impl IsNonFinite for i64 {}
+impl IsNonFinite for i32 {}
+impl IsNonFinite for i16 {}
+impl IsNonFinite for i8 {}
+impl IsNonFinite for u64 {}
+impl IsNonFinite for u32 {}
+impl IsNonFinite for u16 {}
+impl IsNonFinite for u8 {}
+
+trait Number:
+    std::ops::Add<Output = Self>
+    + std::ops::Div<Output = Self>
+    + std::ops::Sub<Output = Self>
+    + Copy
+    + IsNonFinite
+    + PartialEq
+    + PartialOrd
+{
+    fn zero() -> Self;
+    fn as_f64(self) -> f64;
+}
+
+macro_rules! impl_number {
+    ($($t:ty),* $(,)?) => {
+        $(
+            impl Number for $t {
+                fn zero() -> Self { 0 as $t }
+                fn as_f64(self) -> f64 { self as f64 }
+            }
+        )*
+    };
+}
+
+impl_number!(i8, i16, i32, i64, u8, u16, u32, u64, f32, f64);
+
+struct NumberAccumulator<T> {
+    min: T,
+    max: T,
+    // Accumulate in f64 for the best precision.
+    // Otherwise, we can get overflow or underflow.
+    mean: f64,
+    n: usize,
+    n_zeros: usize,
+    n_nan: usize,
+    n_inf: usize,
+}
+
+impl<T: Number> NumberAccumulator<T> {
+    fn accumulate(acc: Option<Self>, x: &T) -> Option<Self> {
+        match acc {
+            Some(acc) => {
+                let new_n = acc.n + 1;
+                Some(Self {
+                    min: if x < &acc.min { *x } else { acc.min },
+                    max: if x > &acc.max { *x } else { acc.max },
+                    mean: acc.mean + (x.as_f64() - acc.mean) / new_n as f64,
+                    n: new_n,
+                    n_zeros: if *x == T::zero() {
+                        acc.n_zeros + 1
+                    } else {
+                        acc.n_zeros
+                    },
+                    n_nan: if x.is_nan() { acc.n_nan + 1 } else { acc.n_nan },
+                    n_inf: if x.is_inf() { acc.n_inf + 1 } else { acc.n_inf },
+                })
+            }
+            None => Some(Self {
+                min: *x,
+                max: *x,
+                mean: x.as_f64(),
+                n: 1,
+                n_zeros: if *x == T::zero() { 1 } else { 0 },
+                n_nan: if x.is_nan() { 1 } else { 0 },
+                n_inf: if x.is_inf() { 1 } else { 0 },
+            }),
+        }
+    }
+}
+
+fn number<'alloc, T>(
+    container: &impl Deref<Target = hdf5::Container>,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError>
+where
+    T: Number + H5Type + Display + std::fmt::Debug,
+{
+    let content = container.read::<T, IxDyn>()?;
+
+    let acc = content.iter().fold(None, NumberAccumulator::accumulate);
+    let volume = content.len();
+
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+
+    write_item(
+        &mut buffer,
+        "DType",
+        printer.format_dtype(&T::type_descriptor(), bump),
+        printer,
+    )?
+    .execute(Print("\n"))?;
+
+    write_item_debug(&mut buffer, "Shape", content.shape(), printer, bump)?.execute(Print("  "))?;
+    write_item(&mut buffer, "Volume", volume, printer)?.execute(Print("  "))?;
+    write_item(
+        &mut buffer,
+        "Size",
+        printer.format_human_size_in(
+            volume as u64 * T::type_descriptor().size() as u64,
+            false,
+            bump,
+        ),
+        printer,
+    )?
+    .execute(Print("\n"))?;
+
+    if let Some(acc) = acc {
+        write_item_debug(&mut buffer, "Range", [acc.min, acc.max], printer, bump)?
+            .execute(Print("  "))?;
+        write_item(&mut buffer, "Mean", acc.mean, printer)?.execute(Print("\n"))?;
+        write_item(&mut buffer, "N_zero", acc.n_zeros, printer)?;
+        if T::can_be_non_finite() {
+            buffer.execute(Print("  "))?;
+            write_item(&mut buffer, "N_NaN", acc.n_nan, printer)?.execute(Print("  "))?;
+            write_item(&mut buffer, "N_Inf", acc.n_inf, printer)?;
+        }
+    }
+
+    Ok(buffer)
+}
+
+fn boolean<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    let content = container.read::<bool, IxDyn>()?;
+
+    let volume = content.len();
+
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+
+    write_item(
+        &mut buffer,
+        "DType",
+        printer.format_dtype(&bool::type_descriptor(), bump),
+        printer,
+    )?
+    .execute(Print("\n"))?;
+
+    write_item_debug(&mut buffer, "Shape", content.shape(), printer, bump)?.execute(Print("  "))?;
+    write_item(&mut buffer, "Volume", volume, printer)?.execute(Print("  "))?;
+    write_item(
+        &mut buffer,
+        "Size",
+        printer.format_human_size_in(
+            volume as u64 * bool::type_descriptor().size() as u64,
+            false,
+            bump,
+        ),
+        printer,
+    )?
+    .execute(Print("\n"))?;
+
+    if volume > 0 {
+        let (all, any) = content
+            .iter()
+            .fold((true, false), |(all, any), &x| (all && x, any || x));
+        write_item(&mut buffer, "All true", all, printer)?.execute(Print("  "))?;
+        write_item(&mut buffer, "Any true", any, printer)?;
+    }
 
     Ok(buffer)
 }
