@@ -1,15 +1,22 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
-use crate::h5;
-use crate::h5::{H5Attribute, H5Dataset, H5File, H5Group, H5Object, H5Path};
+use crate::h5::{H5Attribute, H5Dataset, H5Error, H5File, H5Group, H5Object, H5Path};
 use crate::output::Printer;
 use crate::shell::Shell;
 use bumpalo::{
     Bump,
     collections::{String as BumpString, Vec as BumpVec},
+    format,
 };
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser};
 use crossterm::{ExecutableCommand, style::Print};
-use hdf5::types::TypeDescriptor;
+use hdf5::{
+    H5Type,
+    types::{
+        FixedAscii, FixedUnicode, FloatSize, IntSize, TypeDescriptor, VarLenAscii, VarLenUnicode,
+    },
+};
+use ndarray::IxDyn;
+use std::fmt::Display;
 use std::ops::Deref;
 
 #[derive(Clone, Copy, Default)]
@@ -60,6 +67,7 @@ fn inspect_dataset(dataset: H5Dataset, printer: &Printer) -> CmdResult {
         .execute(printer.style().reset())?
         .execute(Print("      "))?;
     buffer.append(&mut load_and_inspect_data(&dataset, printer, &bump)?);
+
     printer.println(BumpString::from_utf8_lossy_in(&buffer, &bump));
     Ok(CommandOutcome::KeepRunning)
 }
@@ -81,16 +89,10 @@ pub fn load_and_inspect_data<'alloc>(
     bump: &'alloc Bump,
 ) -> Result<BumpVec<'alloc, u8>, CommandError> {
     match container.dtype()?.to_descriptor()? {
-        TypeDescriptor::VarLenUnicode => inspect::var_len_unicode(container, printer, bump),
-        // TypeDescriptor::VarLenAscii => crate::data::load_and_format::var_len_ascii(
-        //     container, max_elem, max_width, printer, bump,
-        // ),
-        // TypeDescriptor::FixedUnicode(n) => crate::data::load_and_format::fixed_len_unicode(
-        //     container, n, max_elem, max_width, printer, bump,
-        // ),
-        // TypeDescriptor::FixedAscii(n) => crate::data::load_and_format::fixed_len_ascii(
-        //     container, n, max_elem, max_width, printer, bump,
-        // ),
+        TypeDescriptor::VarLenUnicode => var_len_unicode(container, printer, bump),
+        TypeDescriptor::VarLenAscii => var_len_ascii(container, printer, bump),
+        TypeDescriptor::FixedUnicode(n) => fixed_len_unicode(container, n, printer, bump),
+        TypeDescriptor::FixedAscii(n) => fixed_len_ascii(container, n, printer, bump),
         // TypeDescriptor::Float(float_size) => crate::data::load_and_format::float(
         //     container, float_size, max_elem, max_width, printer, bump,
         // ),
@@ -103,64 +105,110 @@ pub fn load_and_inspect_data<'alloc>(
         // TypeDescriptor::Boolean => {
         //     crate::data::load_and_format::bool(container, max_elem, max_width, printer, bump)
         // }
-        descriptor => Err(CommandError::Error(format!(
+        descriptor => Err(CommandError::Error(std::format!(
             "dtype not supported: {}",
             printer.format_dtype(&descriptor, bump)
         ))),
     }
 }
 
-mod inspect {
-    use super::*;
-    use bumpalo::format;
-    use hdf5::H5Type;
-    use hdf5::types::{FixedAscii, FixedUnicode, FloatSize, IntSize, VarLenAscii, VarLenUnicode};
-    use ndarray::{IxDyn, s};
-    use std::fmt::{Display, Write};
+fn var_len_unicode<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    string::<VarLenUnicode>(container, printer, bump)
+}
 
-    pub(super) fn var_len_unicode<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> Result<BumpVec<'alloc, u8>, CommandError> {
-        string::<VarLenUnicode>(container, printer, bump)
+fn var_len_ascii<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    string::<VarLenAscii>(container, printer, bump)
+}
+
+fn fixed_len_unicode<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    n: usize,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    const MAX_N: usize = 1024;
+    if n > MAX_N {
+        return Err(CommandError::Error(std::format!(
+            "Can only read fixed-length strings of up to {MAX_N} bytes"
+        )));
     }
+    string::<FixedUnicode<MAX_N>>(container, printer, bump)
+}
 
-    fn string<'alloc, T: H5Type + Display>(
-        container: &impl Deref<Target = hdf5::Container>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> Result<BumpVec<'alloc, u8>, CommandError> {
-        let content = container.read::<T, IxDyn>()?;
-
-        let mut buffer = BumpVec::<u8>::new_in(bump);
-        print_label(&mut buffer, "DType", printer)?
-            .execute(Print(printer.format_dtype(&T::type_descriptor(), bump)))?
-            .execute(Print("\n"))?;
-        print_label(&mut buffer, "Shape", printer)?
-            .execute(Print(format!(
-                in bump,
-                "{:?}",
-                content.shape()
-            )))?
-            .execute(Print("  "))?;
-        print_label(&mut buffer, "N elements", printer)?.execute(Print(format!(
-            in bump,
-            "{}",
-            content.len()
-        )))?;
-
-        Ok(buffer)
+fn fixed_len_ascii<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    n: usize,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    const MAX_N: usize = 1024;
+    if n > MAX_N {
+        return Err(CommandError::Error(std::format!(
+            "Can only read fixed-length strings of up to {MAX_N} bytes"
+        )));
     }
+    string::<FixedAscii<MAX_N>>(container, printer, bump)
+}
 
-    fn print_label<'e, E: ExecutableCommand>(
-        e: &'e mut E,
-        label: &str,
-        printer: &Printer,
-    ) -> std::io::Result<&'e mut E> {
-        e.execute(&printer.style().size)?
-            .execute(Print(label))?
-            .execute(&printer.style().reset())?
-            .execute(Print(": "))
-    }
+fn string<'alloc, T: H5Type + Display + Deref<Target = str>>(
+    container: &impl Deref<Target = hdf5::Container>,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    let content = container.read::<T, IxDyn>()?;
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+
+    write_item(
+        &mut buffer,
+        "DType",
+        printer.format_dtype(&T::type_descriptor(), bump),
+        printer,
+    )?
+    .execute(Print("\n"))?;
+
+    write_item_debug(&mut buffer, "Shape", content.shape(), printer, bump)?.execute(Print("  "))?;
+    write_item(&mut buffer, "Size", content.len(), printer)?.execute(Print("\n"))?;
+
+    let all_ascii = content.iter().all(|item| item.is_ascii());
+    write_item(&mut buffer, "All ASCII", all_ascii, printer)?;
+
+    Ok(buffer)
+}
+
+fn write_item<'e, E: ExecutableCommand, T: Display>(
+    e: &'e mut E,
+    label: &str,
+    value: T,
+    printer: &Printer,
+) -> std::io::Result<&'e mut E> {
+    write_label(e, label, printer)?.execute(Print(value))
+}
+
+fn write_item_debug<'e, E: ExecutableCommand, T: std::fmt::Debug>(
+    e: &'e mut E,
+    label: &str,
+    value: T,
+    printer: &Printer,
+    bump: &Bump,
+) -> std::io::Result<&'e mut E> {
+    write_label(e, label, printer)?.execute(Print(format!(in bump, "{:?}", value)))
+}
+
+fn write_label<'e, E: ExecutableCommand>(
+    e: &'e mut E,
+    label: &str,
+    printer: &Printer,
+) -> std::io::Result<&'e mut E> {
+    e.execute(&printer.style().size)?
+        .execute(Print(label))?
+        .execute(printer.style().reset())?
+        .execute(Print(": "))
 }
