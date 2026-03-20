@@ -4,6 +4,7 @@ mod cd;
 mod exit;
 mod find;
 mod help;
+mod inspect;
 mod ls;
 mod pwd;
 
@@ -13,5 +14,6 @@ pub use cd::Cd;
 pub use exit::Exit;
 pub use find::Find;
 pub use help::Help;
+pub use inspect::Inspect;
 pub use ls::Ls;
 pub use pwd::Pwd;

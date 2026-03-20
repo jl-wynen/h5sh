@@ -26,6 +26,7 @@ impl Commands {
         cmds.insert("exit".to_string(), Rc::new(commands::Exit));
         cmds.insert("find".to_string(), Rc::new(commands::Find));
         cmds.insert("help".to_string(), Rc::new(commands::Help));
+        cmds.insert("inspect".to_string(), Rc::new(commands::Inspect));
         cmds.insert("ls".to_string(), Rc::new(commands::Ls));
         cmds.insert("pwd".to_string(), Rc::new(commands::Pwd));
 
