@@ -2,10 +2,12 @@ pub mod cache;
 mod error;
 mod file;
 mod object;
+mod object_path;
 mod path;
 
 pub use cache::{CacheEntry, CacheEntryId, CacheValue, FileCache, H5FileCache};
 pub use error::{H5Error, Result};
 pub use file::H5File;
 pub use object::*;
+pub use object_path::ObjectPath;
 pub use path::H5Path;

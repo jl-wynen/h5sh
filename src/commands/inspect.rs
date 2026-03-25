@@ -1,5 +1,5 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
-use crate::h5::{H5Attribute, H5Dataset, H5File, H5Group, H5Object, H5Path};
+use crate::h5::{H5Attribute, H5Dataset, H5File, H5Group, H5Object, ObjectPath};
 use crate::output::{
     Printer,
     style::{ATTRIBUTE_CHARACTER, DATASET_CHARACTER, GROUP_CHARACTER},
@@ -30,8 +30,11 @@ impl Command for Inspect {
         let Ok(args) = Arguments::from_arg_matches(&args) else {
             return Err(CommandError::Critical("Failed to extract args".to_string()));
         };
-        let full_path = shell.resolve_path(&args.path);
-        match file.load(&full_path) {
+        let full_path = ObjectPath {
+            location_path: shell.resolve_path(&args.path.location_path),
+            attr_name: args.path.attr_name,
+        };
+        match file.load_object(&full_path) {
             Ok(object) => match object {
                 H5Object::Group(group) => inspect_group(group, shell.printer()),
                 H5Object::Dataset(dataset) => inspect_dataset(dataset, shell.printer()),
@@ -50,8 +53,8 @@ impl Command for Inspect {
 #[derive(Parser, Debug)]
 #[command(name("inspect"))]
 struct Arguments {
-    /// Path of a dataset or group.
-    path: H5Path,
+    /// Path of a dataset, group, or attribute.
+    path: ObjectPath,
 }
 
 fn inspect_group(group: H5Group, printer: &Printer) -> CmdResult {
@@ -84,6 +87,7 @@ fn inspect_group(group: H5Group, printer: &Printer) -> CmdResult {
         GROUP_CHARACTER,
         printer,
     )?;
+    buffer.execute(Print('\n'))?;
 
     write_item(&mut buffer, "Groups", n_group, printer)?;
     buffer.execute(Print("  "))?;
@@ -108,6 +112,7 @@ fn inspect_dataset(dataset: H5Dataset, printer: &Printer) -> CmdResult {
         DATASET_CHARACTER,
         printer,
     )?;
+    buffer.execute(Print("      "))?;
     buffer.append(&mut load_and_inspect_data(&dataset, printer, &bump)?);
 
     printer.println(BumpString::from_utf8_lossy_in(&buffer, &bump));
@@ -125,6 +130,10 @@ fn inspect_attr(attr: H5Attribute, printer: &Printer) -> CmdResult {
         ATTRIBUTE_CHARACTER,
         printer,
     )?;
+    buffer.execute(Print("      "))?;
+    buffer.append(&mut load_and_inspect_data(&attr, printer, &bump)?);
+
+    printer.println(BumpString::from_utf8_lossy_in(&buffer, &bump));
     Ok(CommandOutcome::KeepRunning)
 }
 
@@ -523,5 +532,5 @@ fn write_title<'e, E: ExecutableCommand>(
     if let Some(c) = character {
         e.execute(Print(c))?;
     }
-    e.execute(Print('\n'))
+    Ok(e)
 }
