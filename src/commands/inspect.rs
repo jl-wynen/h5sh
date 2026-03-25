@@ -1,6 +1,9 @@
 use crate::cmd::{CmdResult, Command, CommandError, CommandOutcome};
 use crate::h5::{H5Attribute, H5Dataset, H5File, H5Group, H5Object, H5Path};
-use crate::output::Printer;
+use crate::output::{
+    Printer,
+    style::{ATTRIBUTE_CHARACTER, DATASET_CHARACTER, GROUP_CHARACTER},
+};
 use crate::shell::Shell;
 use bumpalo::{
     Bump,
@@ -52,8 +55,45 @@ struct Arguments {
 }
 
 fn inspect_group(group: H5Group, printer: &Printer) -> CmdResult {
+    let locations = match group.load_child_locations() {
+        Ok(loc) => loc,
+        Err(err) => {
+            return Err(CommandError::Error(std::format!(
+                "Failed to load children of {}: {err}",
+                group.path()
+            )));
+        }
+    };
+
+    let (n_group, n_ds, n_dtype, n_map) = locations.iter().fold(
+        (0, 0, 0, 0),
+        |(n_group, n_ds, n_dtype, n_map), (_, loc)| match loc.loc_type {
+            hdf5::LocationType::Group => (n_group + 1, n_ds, n_dtype, n_map),
+            hdf5::LocationType::Dataset => (n_group, n_ds + 1, n_dtype, n_map),
+            hdf5::LocationType::NamedDatatype => (n_group, n_ds, n_dtype + 1, n_map),
+            hdf5::LocationType::TypeMap => (n_group, n_ds, n_dtype, n_map + 1),
+        },
+    );
+
     let bump = Bump::new();
-    printer.println("Group");
+    let mut buffer = BumpVec::<u8>::new_in(&bump);
+    write_title(
+        &mut buffer,
+        "Group",
+        &printer.style().group,
+        GROUP_CHARACTER,
+        printer,
+    )?;
+
+    write_item(&mut buffer, "Groups", n_group, printer)?;
+    buffer.execute(Print("  "))?;
+    write_item(&mut buffer, "Datasets", n_ds, printer)?;
+    buffer.execute(Print('\n'))?;
+    write_item(&mut buffer, "Named datatypes", n_dtype, printer)?;
+    buffer.execute(Print("  "))?;
+    write_item(&mut buffer, "Type maps", n_map, printer)?;
+
+    printer.println(BumpString::from_utf8_lossy_in(&buffer, &bump));
     Ok(CommandOutcome::KeepRunning)
 }
 
@@ -61,11 +101,13 @@ fn inspect_dataset(dataset: H5Dataset, printer: &Printer) -> CmdResult {
     let bump = Bump::new();
 
     let mut buffer = BumpVec::<u8>::new_in(&bump);
-    buffer
-        .execute(&printer.style().emphasis)?
-        .execute(Print("Dataset"))?
-        .execute(printer.style().reset())?
-        .execute(Print("      "))?;
+    write_title(
+        &mut buffer,
+        "Dataset",
+        &printer.style().dataset,
+        DATASET_CHARACTER,
+        printer,
+    )?;
     buffer.append(&mut load_and_inspect_data(&dataset, printer, &bump)?);
 
     printer.println(BumpString::from_utf8_lossy_in(&buffer, &bump));
@@ -75,11 +117,14 @@ fn inspect_dataset(dataset: H5Dataset, printer: &Printer) -> CmdResult {
 fn inspect_attr(attr: H5Attribute, printer: &Printer) -> CmdResult {
     let bump = Bump::new();
     let mut buffer = BumpVec::<u8>::new_in(&bump);
-    buffer
-        .execute(&printer.style().emphasis)?
-        .execute(Print("Attribute"))?
-        .execute(printer.style().reset())?
-        .execute(Print("    "))?;
+
+    write_title(
+        &mut buffer,
+        "Attribute",
+        &printer.style().attribute,
+        ATTRIBUTE_CHARACTER,
+        printer,
+    )?;
     Ok(CommandOutcome::KeepRunning)
 }
 
@@ -164,10 +209,10 @@ fn string<'alloc, T: H5Type + Display + Deref<Target = str>>(
         printer.format_dtype(&T::type_descriptor(), bump),
         printer,
     )?
-    .execute(Print("\n"))?;
+    .execute(Print('\n'))?;
 
     write_item_debug(&mut buffer, "Shape", content.shape(), printer, bump)?.execute(Print("  "))?;
-    write_item(&mut buffer, "Volume", content.len(), printer)?.execute(Print("\n"))?;
+    write_item(&mut buffer, "Volume", content.len(), printer)?.execute(Print('\n'))?;
 
     let all_ascii = content.iter().all(|item| item.is_ascii());
     write_item(&mut buffer, "All ASCII", all_ascii, printer)?;
@@ -359,7 +404,7 @@ where
         printer.format_dtype(&T::type_descriptor(), bump),
         printer,
     )?
-    .execute(Print("\n"))?;
+    .execute(Print('\n'))?;
 
     write_item_debug(&mut buffer, "Shape", content.shape(), printer, bump)?.execute(Print("  "))?;
     write_item(&mut buffer, "Volume", volume, printer)?.execute(Print("  "))?;
@@ -373,12 +418,12 @@ where
         ),
         printer,
     )?
-    .execute(Print("\n"))?;
+    .execute(Print('\n'))?;
 
     if let Some(acc) = acc {
         write_item_debug(&mut buffer, "Range", [acc.min, acc.max], printer, bump)?
             .execute(Print("  "))?;
-        write_item(&mut buffer, "Mean", acc.mean, printer)?.execute(Print("\n"))?;
+        write_item(&mut buffer, "Mean", acc.mean, printer)?.execute(Print('\n'))?;
         write_item(&mut buffer, "N_zero", acc.n_zeros, printer)?;
         if T::can_be_non_finite() {
             buffer.execute(Print("  "))?;
@@ -407,7 +452,7 @@ fn boolean<'alloc>(
         printer.format_dtype(&bool::type_descriptor(), bump),
         printer,
     )?
-    .execute(Print("\n"))?;
+    .execute(Print('\n'))?;
 
     write_item_debug(&mut buffer, "Shape", content.shape(), printer, bump)?.execute(Print("  "))?;
     write_item(&mut buffer, "Volume", volume, printer)?.execute(Print("  "))?;
@@ -421,7 +466,7 @@ fn boolean<'alloc>(
         ),
         printer,
     )?
-    .execute(Print("\n"))?;
+    .execute(Print('\n'))?;
 
     if volume > 0 {
         let (all, any) = content
@@ -462,4 +507,21 @@ fn write_label<'e, E: ExecutableCommand>(
         .execute(Print(label))?
         .execute(printer.style().reset())?
         .execute(Print(": "))
+}
+
+fn write_title<'e, E: ExecutableCommand>(
+    e: &'e mut E,
+    title: &str,
+    style: &crate::output::style::Item,
+    character: Option<char>,
+    printer: &Printer,
+) -> std::io::Result<&'e mut E> {
+    e.execute(style)?
+        .execute(&printer.style().emphasis)?
+        .execute(Print(title))?
+        .execute(printer.style().reset())?;
+    if let Some(c) = character {
+        e.execute(Print(c))?;
+    }
+    e.execute(Print('\n'))
 }
