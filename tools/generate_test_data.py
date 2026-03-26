@@ -48,6 +48,12 @@ def main() -> None:
             "mixed", data=np.array([True, False, False, True, True])
         )
 
+        arrays = base.create_group("arrays")
+        arrays.create_dataset("all_normal_f32", data=np.array([10.5, -0.2, 4.44], dtype="float32"))
+        arrays.create_dataset("some_nan_inf", data=np.array([[1.0, np.nan], [np.inf, -np.inf], [2.1, 4.1]]))
+        arrays.create_dataset("all_inf", data=np.array([-np.inf, np.inf, -np.inf]))
+        arrays.create_dataset("ints", data=np.array([-6, -28, 8, 0]))
+
 
 if __name__ == "__main__":
     main()

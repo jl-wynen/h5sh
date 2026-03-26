@@ -94,7 +94,7 @@ fn assert_output_lines(actual: Vec<impl AsRef<str>>, expected: Vec<&str>) {
 }
 
 #[test]
-fn cd_and_pwd() -> Result<(), Box<dyn std::error::Error>> {
+fn cd_and_pwd() {
     let mut h5sh = launch_h5sh();
     assert_output_contains(send_command(&mut h5sh, "pwd"), "/");
     // Can go to subgroup
@@ -112,11 +112,10 @@ fn cd_and_pwd() -> Result<(), Box<dyn std::error::Error>> {
     // Looped path gets resolved
     send_command_no_output(&mut h5sh, "cd ../sub-group/./../../base");
     assert_output_contains(send_command(&mut h5sh, "pwd"), "/base");
-    Ok(())
 }
 
 #[test]
-fn ls_from_root() -> Result<(), Box<dyn std::error::Error>> {
+fn ls_from_root() {
     let mut h5sh = launch_h5sh();
     assert_output_contains(send_command(&mut h5sh, "ls"), "base");
 
@@ -124,19 +123,18 @@ fn ls_from_root() -> Result<(), Box<dyn std::error::Error>> {
     let output = read_all_lines(&mut h5sh);
     assert_eq!(
         output,
-        vec!["booleans/  g_empty/  label-utf8  long_array  short  sub-group/"]
+        vec!["arrays/  booleans/  g_empty/  label-utf8  long_array  short  sub-group/"]
     );
-
-    Ok(())
 }
 
 #[test]
-fn ls_l() -> Result<(), Box<dyn std::error::Error>> {
+fn ls_l() {
     let mut h5sh = launch_h5sh();
     send_command_no_output(&mut h5sh, "ls -l base");
     let output = read_all_lines(&mut h5sh);
 
     let expected_lines = [
+        "            grp      arrays/",
         "            grp      booleans/",
         "            grp      g_empty/",
         "()     16B  utf-8    label-utf8 This is a UTF-8 dataset",
@@ -150,21 +148,18 @@ fn ls_l() -> Result<(), Box<dyn std::error::Error>> {
             "Expected '{actual}' to  start with '{expected}'"
         );
     }
-
-    Ok(())
 }
 
 #[test]
-fn ls_empty_group() -> Result<(), Box<dyn std::error::Error>> {
+fn ls_empty_group() {
     let mut h5sh = launch_h5sh();
     send_command_no_output(&mut h5sh, "cd base/g_empty");
     send_command_no_output(&mut h5sh, "ls");
     assert_eq!(read_all_lines(&mut h5sh), Vec::<String>::new());
-    Ok(())
 }
 
 #[test]
-fn attr() -> Result<(), Box<dyn std::error::Error>> {
+fn attr() {
     let mut h5sh = launch_h5sh();
     send_command_no_output(&mut h5sh, "a base/sub-group");
     let output = read_all_lines(&mut h5sh);
@@ -175,12 +170,10 @@ fn attr() -> Result<(), Box<dyn std::error::Error>> {
         "()  16B  utf-8 class@ TestGroup",
     ];
     assert_output_lines(output, expected_lines);
-
-    Ok(())
 }
 
 #[test]
-fn cat() -> Result<(), Box<dyn std::error::Error>> {
+fn cat() {
     let mut h5sh = launch_h5sh();
 
     send_command_no_output(&mut h5sh, "cat base/label-utf8");
@@ -192,12 +185,10 @@ fn cat() -> Result<(), Box<dyn std::error::Error>> {
     let output = read_all_lines(&mut h5sh);
     let expected_lines = vec!["[0, 1, 2, 3, 4, ..., 1025, 1026, 1027, 1028, 1029]"];
     assert_output_lines(output, expected_lines);
-
-    Ok(())
 }
 
 #[test]
-fn fd_location() -> Result<(), Box<dyn std::error::Error>> {
+fn fd_location() {
     let mut h5sh = launch_h5sh();
 
     send_command_no_output(&mut h5sh, "fd utf8");
@@ -209,12 +200,10 @@ fn fd_location() -> Result<(), Box<dyn std::error::Error>> {
     let output = read_all_lines(&mut h5sh);
     let expected_lines = vec!["base/g_empty"];
     assert_output_lines(output, expected_lines);
-
-    Ok(())
 }
 
 #[test]
-fn fd_attr() -> Result<(), Box<dyn std::error::Error>> {
+fn fd_attr() {
     let mut h5sh = launch_h5sh();
 
     send_command_no_output(&mut h5sh, "fd @testo");
@@ -232,12 +221,80 @@ fn fd_attr() -> Result<(), Box<dyn std::error::Error>> {
     let output = read_all_lines(&mut h5sh);
     let expected_lines = vec!["base/label-utf8", "  testo2 = another attribute"];
     assert_output_lines(output, expected_lines);
-
-    Ok(())
 }
 
 #[test]
-fn inspect_boolean() -> Result<(), Box<dyn std::error::Error>> {
+fn inspect_dataset_int() {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "inspect base/arrays/ints");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: i64",
+        "Shape: [4]  Volume: 4  Size: 32B",
+        "Range: [-28, 8]  Mean: -6.5",
+        "Zeros: 1",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn inspect_dataset_float() {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "inspect base/arrays/all_normal_f32");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: f32",
+        "Shape: [3]  Volume: 3  Size: 12B",
+        "Range: [-0.2, 10.5]  Mean: 4.913333351413409",
+        "Zeros: 0  NaNs: 0  Infs: 0",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+
+    send_command_no_output(&mut h5sh, "inspect base/arrays/some_nan_inf");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: f64",
+        "Shape: [3, 2]  Volume: 6  Size: 48B",
+        "Range: [1.0, 4.1]  Mean: 2.4",
+        "Zeros: 0  NaNs: 1  Infs: 2",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+
+    send_command_no_output(&mut h5sh, "inspect base/arrays/all_inf");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: f64",
+        "Shape: [3]  Volume: 3  Size: 24B",
+        "Range: [-inf, inf]  Mean: -inf",
+        "Zeros: 0  NaNs: 0  Infs: 3",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn inspect_dataset_boolean() {
     let mut h5sh = launch_h5sh();
 
     send_command_no_output(&mut h5sh, "inspect base/booleans/all_true");
@@ -281,12 +338,79 @@ fn inspect_boolean() -> Result<(), Box<dyn std::error::Error>> {
             "Expected '{actual}' to  start with '{expected}'"
         );
     }
-
-    Ok(())
 }
 
 #[test]
-fn help() -> Result<(), Box<dyn std::error::Error>> {
+fn inspect_attr_int() {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "inspect base/sub-group@array");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Attribute@      DType: i64",
+        "Shape: [4]  Volume: 4  Size: 32B",
+        "Range: [1, 6]  Mean: 3.5",
+        "Zeros: 0",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+
+    send_command_no_output(&mut h5sh, "inspect base/arrays/some_nan_inf");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: f64",
+        "Shape: [3, 2]  Volume: 6  Size: 48B",
+        "Range: [1.0, 4.1]  Mean: 2.4",
+        "Zeros: 0  NaNs: 1  Infs: 2",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+
+    send_command_no_output(&mut h5sh, "inspect base/arrays/all_inf");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: f64",
+        "Shape: [3]  Volume: 3  Size: 24B",
+        "Range: [-inf, inf]  Mean: -inf",
+        "Zeros: 0  NaNs: 0  Infs: 3",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn inspect_group() {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "inspect base/");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Group/",
+        "Groups: 4  Datasets: 3",
+        "Named datatypes: 0  Type maps: 0",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn help() {
     let mut h5sh = launch_h5sh();
     send_command_no_output(&mut h5sh, "help");
     let output = read_all_lines(&mut h5sh);
@@ -294,7 +418,6 @@ fn help() -> Result<(), Box<dyn std::error::Error>> {
     assert!(output.iter().filter(|line| line.contains("ls")).count() > 0);
     // `help` lists an alias:
     assert!(output.iter().filter(|line| line.contains("..")).count() > 0);
-    Ok(())
 }
 
 #[test]
