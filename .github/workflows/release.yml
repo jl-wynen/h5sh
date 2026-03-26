@@ -94,3 +94,7 @@ jobs:
         with:
           file: h5sh-*/h5sh-*
           file_glob: true
+      - name: Upload checksums to GH release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: SHA256SUMS
