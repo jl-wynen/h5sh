@@ -333,6 +333,7 @@ trait Number:
 {
     fn zero() -> Self;
     fn as_f64(self) -> f64;
+    fn is_negative(self) -> bool;
 }
 
 macro_rules! impl_number {
@@ -341,6 +342,7 @@ macro_rules! impl_number {
             impl Number for $t {
                 fn zero() -> Self { 0 as $t }
                 fn as_f64(self) -> f64 { self as f64 }
+                fn is_negative(self) -> bool { self < 0 as $t }
             }
         )*
     };
@@ -354,7 +356,7 @@ struct NumberAccumulator<T> {
     // Accumulate in f64 for the best precision.
     // Otherwise, we can get overflow or underflow.
     mean: f64,
-    n: usize,
+    n_normal: usize,
     n_zeros: usize,
     n_nan: usize,
     n_inf: usize,
@@ -364,17 +366,13 @@ impl<T: Number> NumberAccumulator<T> {
     fn accumulate(acc: Option<Self>, x: &T) -> Option<Self> {
         match acc {
             Some(acc) => {
-                let new_n = acc.n + 1;
+                let new_n = acc.n_normal + if Self::is_normal(*x) { 1 } else { 0 };
                 Some(Self {
-                    min: if x < &acc.min { *x } else { acc.min },
-                    max: if x > &acc.max { *x } else { acc.max },
-                    mean: acc.mean + (x.as_f64() - acc.mean) / new_n as f64,
-                    n: new_n,
-                    n_zeros: if *x == T::zero() {
-                        acc.n_zeros + 1
-                    } else {
-                        acc.n_zeros
-                    },
+                    min: Self::nan_min(acc.min, *x),
+                    max: Self::nan_max(acc.max, *x),
+                    mean: Self::nan_mean(acc.mean, *x, new_n),
+                    n_normal: new_n,
+                    n_zeros: acc.n_zeros + if *x == T::zero() { 1 } else { 0 },
                     n_nan: if x.is_nan() { acc.n_nan + 1 } else { acc.n_nan },
                     n_inf: if x.is_inf() { acc.n_inf + 1 } else { acc.n_inf },
                 })
@@ -383,12 +381,54 @@ impl<T: Number> NumberAccumulator<T> {
                 min: *x,
                 max: *x,
                 mean: x.as_f64(),
-                n: 1,
+                n_normal: if Self::is_normal(*x) { 1 } else { 0 },
                 n_zeros: if *x == T::zero() { 1 } else { 0 },
                 n_nan: if x.is_nan() { 1 } else { 0 },
                 n_inf: if x.is_inf() { 1 } else { 0 },
             }),
         }
+    }
+
+    fn nan_min(acc: T, x: T) -> T {
+        if !Self::is_normal(acc) {
+            if !Self::is_normal(x) {
+                if x.is_negative() { x } else { acc }
+            } else {
+                x
+            }
+        } else if !Self::is_normal(x) {
+            acc
+        } else {
+            if x < acc { x } else { acc }
+        }
+    }
+
+    fn nan_max(acc: T, x: T) -> T {
+        if !Self::is_normal(acc) {
+            if !Self::is_normal(x) {
+                if x.is_negative() { acc } else { x }
+            } else {
+                x
+            }
+        } else if !Self::is_normal(x) {
+            acc
+        } else {
+            if x > acc { x } else { acc }
+        }
+    }
+
+    fn nan_mean(acc: f64, x: T, new_n: usize) -> f64 {
+        if !Self::is_normal(acc) {
+            x.as_f64()
+        } else if !Self::is_normal(x) {
+            acc
+        } else {
+            acc + (x.as_f64() - acc) / new_n as f64
+        }
+    }
+
+    fn is_normal<X: Number>(x: X) -> bool {
+        !x.is_nan() && !x.is_inf()
     }
 }
 
@@ -433,11 +473,11 @@ where
         write_item_debug(&mut buffer, "Range", [acc.min, acc.max], printer, bump)?
             .execute(Print("  "))?;
         write_item(&mut buffer, "Mean", acc.mean, printer)?.execute(Print('\n'))?;
-        write_item(&mut buffer, "N_zero", acc.n_zeros, printer)?;
+        write_item(&mut buffer, "Zeros", acc.n_zeros, printer)?;
         if T::can_be_non_finite() {
             buffer.execute(Print("  "))?;
-            write_item(&mut buffer, "N_NaN", acc.n_nan, printer)?.execute(Print("  "))?;
-            write_item(&mut buffer, "N_Inf", acc.n_inf, printer)?;
+            write_item(&mut buffer, "NaNs", acc.n_nan, printer)?.execute(Print("  "))?;
+            write_item(&mut buffer, "Infs", acc.n_inf, printer)?;
         }
     }
 
