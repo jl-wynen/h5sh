@@ -89,12 +89,8 @@ jobs:
         run: |
           cd release-assets
           sha256sum h5sh-*.zip > SHA256SUMS
-      - name: Upload binaries to GH release
+      - name: Upload assets to GH release
         uses: svenstaro/upload-release-action@v2
         with:
-          file: h5sh-*/h5sh-*
+          file: release-assets/*
           file_glob: true
-      - name: Upload checksums to GH release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: SHA256SUMS
