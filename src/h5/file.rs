@@ -1,6 +1,7 @@
 use super::error::{H5Error, Result};
 use super::object::H5Object;
 use super::path::H5Path;
+use crate::h5::ObjectPath;
 use log::info;
 use std::path::PathBuf;
 
@@ -23,6 +24,23 @@ impl H5File {
     pub fn load<L: LocationSpec>(&self, location: L) -> Result<H5Object> {
         let location = location.into_location(&self.file)?;
         H5Object::from_location(H5Path::from(location.name()), &location)
+    }
+
+    pub fn load_object(&self, path: &ObjectPath) -> Result<H5Object> {
+        match self.load(&path.location_path)? {
+            H5Object::Group(group) => match &path.attr_name {
+                Some(attr_name) => group.attr(attr_name).map(H5Object::Attribute),
+                None => Ok(H5Object::Group(group)),
+            },
+            H5Object::Dataset(dataset) => match &path.attr_name {
+                Some(attr_name) => dataset.attr(attr_name).map(H5Object::Attribute),
+                None => Ok(H5Object::Dataset(dataset)),
+            },
+            H5Object::Attribute(_) => {
+                // This should never happen.
+                Err(H5Error::Other("Did not expect an attribute".to_string()))
+            }
+        }
     }
 }
 

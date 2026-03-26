@@ -25,19 +25,34 @@ def main() -> None:
         utf8[()] = "This is a UTF-8 dataset"
         utf8.attrs["testo1"] = "test attribute 1"
         utf8.attrs["testo2"] = "another attribute"
-        fixed_ascii = base.create_dataset("short", (), dtype=h5.string_dtype('ascii', length=6))
+        fixed_ascii = base.create_dataset(
+            "short", (), dtype=h5.string_dtype("ascii", length=6)
+        )
         fixed_ascii[()] = "shorty"
-        base.create_dataset("long_array", data=np.arange(1030, dtype='float64'))
+        base.create_dataset("long_array", data=np.arange(1030, dtype="float64"))
 
         base.create_group("g_empty")
 
         subgroup = base.create_group("sub-group")
         subgroup.attrs["class"] = "TestGroup"
         subgroup.attrs["array"] = np.array([1, 2, 5, 6], dtype=np.int64)
-        subgroup.attrs.create("ascii", "English only", dtype=h5.string_dtype('ascii'))
+        subgroup.attrs.create("ascii", "English only", dtype=h5.string_dtype("ascii"))
 
         nested_ds = subgroup.create_dataset("nested_ds", data=np.array([-1, 10]))
         nested_ds.attrs["testo"] = "nested ds"
+
+        booleans = base.create_group("booleans")
+        booleans.create_dataset("all_true", data=np.array([True] * 3))
+        booleans.create_dataset("all_false", data=np.array([False] * 4))
+        booleans.create_dataset(
+            "mixed", data=np.array([True, False, False, True, True])
+        )
+
+        arrays = base.create_group("arrays")
+        arrays.create_dataset("all_normal_f32", data=np.array([10.5, -0.2, 4.44], dtype="float32"))
+        arrays.create_dataset("some_nan_inf", data=np.array([[1.0, np.nan], [np.inf, -np.inf], [2.1, 4.1]]))
+        arrays.create_dataset("all_inf", data=np.array([-np.inf, np.inf, -np.inf]))
+        arrays.create_dataset("ints", data=np.array([-6, -28, 8, 0]))
 
 
 if __name__ == "__main__":

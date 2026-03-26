@@ -44,6 +44,6 @@ struct Arguments {
 fn cat_dataset(dataset: H5Dataset, printer: &Printer) -> CmdResult {
     let bump = Bump::new();
     let formatted = load_and_format_data(&dataset, None, None, printer, &bump)?;
-    println!("{formatted}");
+    printer.println(formatted);
     Ok(CommandOutcome::KeepRunning)
 }
