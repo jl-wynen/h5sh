@@ -1,6 +1,6 @@
-use super::completion;
 use super::parse::{Argument, Expression, Parser, StringExpression};
 use super::text_index::TextIndex;
+use super::{Editor, Poll, completion};
 use crate::h5::{self, CacheValue, H5Error, H5File, H5FileCache, H5Object, H5Path};
 use crate::output::Style;
 use crate::prompt::Prompt;
@@ -53,7 +53,23 @@ impl<'f> LineEditor<'f> {
         })
     }
 
-    pub fn poll(&mut self, shell: &Shell, h5file: &H5File) -> Poll {
+    pub fn save_history(&mut self) -> rustyline::Result<()> {
+        let path = history_path();
+        // The history is never in the root dir.
+        let parent = path.parent().unwrap();
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+        self.editor.save_history(&path)
+    }
+
+    fn add_history_entry<S: AsRef<str> + Into<String>>(&mut self, entry: S) {
+        let _ = self.editor.add_history_entry(entry);
+    }
+}
+
+impl<'f> Editor<'f> for LineEditor<'f> {
+    fn poll(&mut self, shell: &Shell, h5file: &H5File) -> Poll {
         let line = self.editor.readline(&self.prompt.render(shell, h5file));
         match line {
             Ok(line) => {
@@ -70,33 +86,11 @@ impl<'f> LineEditor<'f> {
         }
     }
 
-    pub fn save_history(&mut self) -> rustyline::Result<()> {
-        let path = history_path();
-        // The history is never in the root dir.
-        let parent = path.parent().unwrap();
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-        }
-        self.editor.save_history(&path)
-    }
-
-    pub fn set_working_group(&mut self, group: H5Path) {
+    fn set_working_group(&mut self, group: H5Path) {
         if let Some(helper) = self.editor.helper_mut() {
             helper.working_group = group;
         }
     }
-
-    fn add_history_entry<S: AsRef<str> + Into<String>>(&mut self, entry: S) {
-        let _ = self.editor.add_history_entry(entry);
-    }
-}
-
-#[derive(Debug)]
-pub enum Poll {
-    Cmd(String),
-    Error(String),
-    Skip,
-    Exit,
 }
 
 #[derive(Helper, Hinter, Validator)]

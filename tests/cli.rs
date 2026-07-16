@@ -3,7 +3,7 @@
 
 use rexpect::session::{PtyReplSession, spawn_command};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 
 /** Return the path to a test data file. */
 fn data_path(filename: &str) -> String {
@@ -43,6 +43,16 @@ fn launch_h5sh() -> PtyReplSession {
         .quit_command(Some("exit".to_owned()));
     h5sh.wait_for_prompt().unwrap();
     h5sh
+}
+
+fn launch_h5sh_in_batch_mode(actions: &str) -> Output {
+    let mut cmd = Command::new(exe_path());
+    cmd.arg(data_path("test.h5"))
+        .arg(format!("-c {actions}"))
+        .arg("--color=never")
+        .env("COLUMNS", "80")
+        .output()
+        .expect("Failed to execute command")
 }
 
 /** Run a command in an interactive h5py session and return the output. */
@@ -402,6 +412,34 @@ fn inspect_group() {
         "Named datatypes: 0  Type maps: 0",
     ];
     for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn batch_ls() {
+    let output = launch_h5sh_in_batch_mode("ls");
+    assert!(output.status.success());
+    let output = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output, "base/\n");
+
+    let output = launch_h5sh_in_batch_mode("ls -l base");
+    assert!(output.status.success());
+    let output = String::from_utf8_lossy(&output.stdout);
+
+    let expected_lines = [
+        "            grp      arrays/",
+        "            grp      booleans/",
+        "            grp      g_empty/",
+        "()     16B  utf-8    label-utf8 This is a UTF-8 dataset",
+        "(1030)  8Ki f64      long_array [0, 1, 2, 3, 4, 5, 6, 7 ...",
+        "()      6B  ascii(6) short      shorty",
+        "            grp      sub-group/",
+    ];
+    for (actual, expected) in output.lines().zip(expected_lines.iter()) {
         assert!(
             actual.starts_with(expected),
             "Expected '{actual}' to  start with '{expected}'"
