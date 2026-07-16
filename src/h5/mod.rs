@@ -7,7 +7,7 @@ mod path;
 
 pub use cache::{CacheEntry, CacheEntryId, CacheValue, FileCache, H5FileCache};
 pub use error::{H5Error, Result};
-pub use file::H5File;
+pub use file::{H5File, Locking};
 pub use object::*;
 pub use object_path::ObjectPath;
 pub use path::H5Path;

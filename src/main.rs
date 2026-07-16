@@ -26,7 +26,7 @@ fn main() -> ExitCode {
 
 fn open_file(args: cli::OpenArgs) -> ExitCode {
     let shell = shell::Shell::new(args.color);
-    let h5file = match h5::H5File::open(args.path.clone()) {
+    let h5file = match h5::H5File::open(args.path.clone(), args.locking) {
         Ok(h5file) => h5file,
         Err(err) => {
             shell
