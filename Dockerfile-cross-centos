@@ -1,0 +1,25 @@
+FROM ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main-centos
+
+ARG CMAKE_VERSION
+
+RUN yum install -y \
+      gcc \
+      gcc-c++ \
+      make \
+      openssl-devel \
+      tar \
+      gzip \
+      wget \
+    && yum clean all
+
+RUN cd /tmp \
+    && wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz \
+    && tar -xzf cmake-${CMAKE_VERSION}.tar.gz \
+    && cd cmake-${CMAKE_VERSION} \
+    && ./bootstrap --prefix=/opt/cmake \
+    && make -j"$(nproc)" \
+    && make install \
+    && cd / \
+    && rm -rf /tmp/cmake-${CMAKE_VERSION} /tmp/cmake-${CMAKE_VERSION}.tar.gz
+
+ENV PATH="/opt/cmake/bin:${PATH}"
