@@ -122,6 +122,9 @@ fn cd_and_pwd() {
     // Looped path gets resolved
     send_command_no_output(&mut h5sh, "cd ../sub-group/./../../base");
     assert_output_contains(send_command(&mut h5sh, "pwd"), "/base");
+    // Without argument goes to root
+    send_command_no_output(&mut h5sh, "cd");
+    assert_output_contains(send_command(&mut h5sh, "pwd"), "/");
 }
 
 #[test]
