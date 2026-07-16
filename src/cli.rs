@@ -33,6 +33,10 @@ struct CliOpenArgs {
     /// HDF5 file to open.
     pub path: Option<PathBuf>,
 
+    /// Execute a command in h5sh and exit.
+    #[arg(short, long)]
+    pub command: Option<String>,
+
     /// Control color output.
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
@@ -67,6 +71,7 @@ pub enum Commands {
 #[derive(Debug)]
 pub struct OpenArgs {
     pub path: PathBuf,
+    pub command: Option<String>,
     pub color: bool,
 }
 
@@ -123,6 +128,7 @@ fn normalize_open_args(open_args: CliOpenArgs) -> OpenArgs {
     };
     OpenArgs {
         path,
+        command: open_args.command,
         color: normalize_color_choice(open_args.color),
     }
 }

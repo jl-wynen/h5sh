@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use crate::cmd::{self, Command, CommandError, CommandOutcome};
+use crate::editor::LineEditor;
+use crate::editor::parse::{Argument, Expression, Parser};
 use crate::h5::{H5File, H5Path};
-use crate::line_editor::LineEditor;
-use crate::line_editor::parse::{Argument, Expression, Parser};
 use crate::output::Printer;
 
 pub struct Shell {

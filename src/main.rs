@@ -2,14 +2,15 @@ mod cli;
 mod cmd;
 mod commands;
 mod data;
+mod editor;
 mod h5;
-mod line_editor;
 mod output;
 mod prompt;
 mod shell;
 
+use crate::editor::BatchEditor;
 use cmd::CommandOutcome;
-use line_editor::Poll;
+use editor::{Editor, Poll};
 use log::{LevelFilter, error};
 use simple_logger::SimpleLogger;
 use std::process::ExitCode;
@@ -24,7 +25,7 @@ fn main() -> ExitCode {
 }
 
 fn open_file(args: cli::OpenArgs) -> ExitCode {
-    let mut shell = shell::Shell::new(args.color);
+    let shell = shell::Shell::new(args.color);
     let h5file = match h5::H5File::open(args.path.clone()) {
         Ok(h5file) => h5file,
         Err(err) => {
@@ -35,14 +36,39 @@ fn open_file(args: cli::OpenArgs) -> ExitCode {
         }
     };
 
-    let Ok(mut editor) = shell.start_editor(&h5file) else {
+    if let Some(cmd) = args.command {
+        run_batch(shell, &h5file, vec![cmd])
+    } else {
+        run_interactively(shell, &h5file)
+    }
+}
+
+fn run_interactively(shell: shell::Shell, h5file: &h5::H5File) -> ExitCode {
+    let Ok(mut editor) = shell.start_editor(h5file) else {
         shell.printer().print_shell_error("Failed to start editor");
         return ExitCode::FAILURE;
     };
+
+    let exit_code = run_commands(shell, h5file, &mut editor);
+    // Only save the history in interactive mode.
+    editor.save_history().unwrap();
+    exit_code
+}
+
+fn run_batch(shell: shell::Shell, h5file: &h5::H5File, commands: Vec<String>) -> ExitCode {
+    let mut editor = BatchEditor::new(commands);
+    run_commands(shell, h5file, &mut editor)
+}
+
+fn run_commands<'f, E: Editor<'f>>(
+    mut shell: shell::Shell,
+    h5file: &'f h5::H5File,
+    editor: &mut E,
+) -> ExitCode {
     let mut exit_code = ExitCode::SUCCESS;
     loop {
-        match editor.poll(&shell, &h5file) {
-            Poll::Cmd(input) => match shell.parse_and_execute_input(&input, &h5file) {
+        match editor.poll(&shell, h5file) {
+            Poll::Cmd(input) => match shell.parse_and_execute_input(&input, h5file) {
                 CommandOutcome::KeepRunning => {}
                 CommandOutcome::ChangeWorkingGroup(new_working_group) => {
                     shell.set_working_group(new_working_group.clone());
@@ -64,8 +90,6 @@ fn open_file(args: cli::OpenArgs) -> ExitCode {
             }
         }
     }
-
-    editor.save_history().unwrap();
     exit_code
 }
 
