@@ -11,10 +11,23 @@ pub struct H5File {
 }
 
 impl H5File {
-    pub fn open(path: PathBuf) -> std::io::Result<Self> {
+    pub fn open(path: PathBuf, locking: Locking) -> std::io::Result<Self> {
         info!("Opening file: {:}", path.display());
-        let file = hdf5::File::open(path)?;
-        Ok(Self { file })
+        let mut builder = hdf5::File::with_options();
+
+        match locking {
+            Locking::False => {
+                builder.access_plist().file_locking(false);
+            }
+            Locking::True => {
+                builder.access_plist().file_locking(true);
+            }
+            Locking::Auto => { /* set by default */ }
+        }
+
+        Ok(Self {
+            file: builder.open(path)?,
+        })
     }
 
     pub fn filename(&self) -> String {
@@ -42,6 +55,13 @@ impl H5File {
             }
         }
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Locking {
+    Auto,
+    True,
+    False,
 }
 
 pub trait LocationSpec {

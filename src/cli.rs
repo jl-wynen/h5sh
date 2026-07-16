@@ -1,3 +1,4 @@
+use crate::h5::Locking;
 use clap::{Args, CommandFactory, Parser, ValueEnum};
 use crossterm::{queue, style::Print};
 use std::path::PathBuf;
@@ -40,6 +41,10 @@ struct CliOpenArgs {
     /// Control color output.
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
+
+    /// Enable / disable HDF5 file locking.
+    #[arg(long, value_enum, default_value_t = LockingChoice::Auto)]
+    pub locking: LockingChoice,
 }
 
 #[derive(Args, Debug)]
@@ -73,6 +78,7 @@ pub struct OpenArgs {
     pub path: PathBuf,
     pub command: Option<String>,
     pub color: bool,
+    pub locking: Locking,
 }
 
 #[derive(Debug)]
@@ -85,6 +91,13 @@ enum ColorChoice {
     Auto,
     Always,
     Never,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum LockingChoice {
+    Auto,
+    True,
+    False,
 }
 
 impl Arguments {
@@ -130,6 +143,7 @@ fn normalize_open_args(open_args: CliOpenArgs) -> OpenArgs {
         path,
         command: open_args.command,
         color: normalize_color_choice(open_args.color),
+        locking: normalize_locking_choice(open_args.locking),
     }
 }
 
@@ -138,6 +152,14 @@ fn normalize_color_choice(arg: ColorChoice) -> bool {
         ColorChoice::Always => true,
         ColorChoice::Never => false,
         ColorChoice::Auto => !std::env::var("NO_COLOR").is_ok_and(|value| !value.is_empty()),
+    }
+}
+
+fn normalize_locking_choice(arg: LockingChoice) -> Locking {
+    match arg {
+        LockingChoice::Auto => Locking::Auto,
+        LockingChoice::True => Locking::True,
+        LockingChoice::False => Locking::False,
     }
 }
 
