@@ -12,7 +12,7 @@ impl Command for Cd {
         let Ok(args) = Arguments::from_arg_matches(&args) else {
             return Err(CommandError::Critical("Failed to extract args".to_string()));
         };
-        let full_path = shell.resolve_path(&args.path);
+        let full_path = shell.resolve_path(&args.path.unwrap_or_else(H5Path::root));
         match file.load(&full_path) {
             Ok(object) => match object {
                 H5Object::Group(_) => Ok(CommandOutcome::ChangeWorkingGroup(full_path)),
@@ -31,6 +31,6 @@ impl Command for Cd {
 #[derive(Parser, Debug)]
 #[command(name("cd"))]
 struct Arguments {
-    /// Path to change into.
-    path: H5Path,
+    /// Path to change to; defaults to the root group.
+    path: Option<H5Path>,
 }
