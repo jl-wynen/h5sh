@@ -29,7 +29,7 @@ uutils_term_grid = "0.8"
 
 # We use an old version to be compatible with Cross' CentOS image which
 # only has CMake 3.23.1
-hdf5 = { package = "hdf5-metno", version = "0.10", features = ["f16", "static"] }
+hdf5 = { package = "hdf5-metno", version = "0.13", features = ["f16", "static"] }
 ndarray = "0.16"
 
 [dev-dependencies]
@@ -43,7 +43,3 @@ rexpect = "0.7.0"
 lto = 'thin'
 codegen-units = 1
 strip = true
-
-[workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
-# Configure linux builds to use CentOS:
-image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main-centos"

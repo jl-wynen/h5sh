@@ -1,0 +1,5 @@
+# Use a custom CentOS image.
+# The image needs to use a custom CMake installation because HDF5 cannot be compiled
+# with the default on CentOS 7.
+[target.x86_64-unknown-linux-gnu]
+image = "ghcr.io/jl-wynen/h5sh/cross-x86_64-unknown-linux-gnu-centos-cmake:3.29.8"
