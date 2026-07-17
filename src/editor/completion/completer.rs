@@ -128,7 +128,8 @@ fn classify_location_expression(expression: &Expression, pos: TextIndex) -> Opti
         }
         Expression::Call(call) => {
             if !call.range.contains_or_end(pos) {
-                return None; // avoid scanning children
+                // Default to Path to complete an empty string as path
+                return Some(LocationType::Path(TextRange::start_new(pos)));
             }
             if call.function.range.contains_or_end(pos) {
                 Some(LocationType::Command(call.function.range))
@@ -136,6 +137,8 @@ fn classify_location_expression(expression: &Expression, pos: TextIndex) -> Opti
                 call.arguments
                     .iter()
                     .find_map(|arg| classify_location_argument(arg, pos))
+                    // Default to Path to complete an empty string as path
+                    .or_else(|| Some(LocationType::Path(TextRange::start_new(pos))))
             }
         }
         Expression::Noop => None,
@@ -421,6 +424,66 @@ mod tests {
             replacement: "ath".into(),
         }];
         assert_eq!(insertion, 10);
+        assert_eq!(completions, expected);
+    }
+
+    #[test]
+    fn complete_path_from_empty_single_arg() {
+        let line = "ls ";
+        let expression = Parser::new(line).parse();
+        let commands = HashSet::new();
+        let mut cache = FileCache::new();
+        let root = cache.insert_group(&H5Path::from("/"), -1);
+        cache
+            .insert_children(root, [(H5Path::from("/entry"), 1, true)])
+            .unwrap();
+
+        let (insertion, completions) = complete(
+            &expression,
+            line,
+            3,
+            &commands,
+            &mut cache,
+            &H5Path::root(),
+            child_loader(),
+        )
+        .unwrap();
+
+        let expected = vec![Candidate {
+            display: "entry".into(),
+            replacement: "entry/".into(),
+        }];
+        assert_eq!(insertion, 3);
+        assert_eq!(completions, expected);
+    }
+
+    #[test]
+    fn complete_path_from_empty_before_other_arg() {
+        let line = "ls  -l";
+        let expression = Parser::new(line).parse();
+        let commands = HashSet::new();
+        let mut cache = FileCache::new();
+        let root = cache.insert_group(&H5Path::from("/"), -1);
+        cache
+            .insert_children(root, [(H5Path::from("/entry"), 1, true)])
+            .unwrap();
+
+        let (insertion, completions) = complete(
+            &expression,
+            line,
+            3,
+            &commands,
+            &mut cache,
+            &H5Path::root(),
+            child_loader(),
+        )
+        .unwrap();
+
+        let expected = vec![Candidate {
+            display: "entry".into(),
+            replacement: "entry/".into(),
+        }];
+        assert_eq!(insertion, 3);
         assert_eq!(completions, expected);
     }
 }
