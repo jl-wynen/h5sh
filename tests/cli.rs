@@ -32,10 +32,17 @@ fn exe_path() -> String {
 
 /** Launch h5sh as an interactive PTY session. */
 fn launch_h5sh() -> PtyReplSession {
+    launch_h5sh_with_args(&[])
+}
+
+fn launch_h5sh_with_args(arguments: &[&str]) -> PtyReplSession {
     let mut cmd = Command::new(exe_path());
     cmd.arg(data_path("test.h5"))
         .arg("--color=never")
         .env("COLUMNS", "80");
+    for arg in arguments {
+        cmd.arg(arg);
+    }
 
     let mut h5sh = PtyReplSession::new(spawn_command(cmd, Some(200)).unwrap(), "$".to_owned())
         // h5sh echoes the input back to stdout
@@ -443,6 +450,32 @@ fn batch_ls() {
         "            grp      sub-group/",
     ];
     for (actual, expected) in output.lines().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn initial_commands() {
+    let mut h5sh = launch_h5sh_with_args(&["-i cd base"]);
+
+    send_command_no_output(&mut h5sh, "pwd");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = ["/base"];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+
+    send_command_no_output(&mut h5sh, "ls");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines =
+        ["arrays/  booleans/  g_empty/  label-utf8  long_array  short  sub-group/"];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
         assert!(
             actual.starts_with(expected),
             "Expected '{actual}' to  start with '{expected}'"
