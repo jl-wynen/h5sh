@@ -22,12 +22,13 @@ impl Command for Find {
         let Ok(args) = Arguments::from_arg_matches(&args) else {
             return Err(CommandError::Critical("Failed to extract args".to_string()));
         };
+        let base_path = H5Path::from(".");
         let absolute_target = shell.resolve_path(&args.target);
         match args.pattern {
             Pattern::Name(name) => {
                 find_name(
                     file,
-                    args.target,
+                    base_path,
                     absolute_target,
                     name,
                     !args.non_recursive,
@@ -37,7 +38,7 @@ impl Command for Find {
             Pattern::Attr { name, value } => {
                 find_attr(
                     file,
-                    args.target,
+                    base_path,
                     absolute_target,
                     name,
                     value,
@@ -105,9 +106,7 @@ fn find_name(
     printer: &Printer,
 ) -> CmdResult {
     match file.load(&absolute_target)? {
-        H5Object::Group(group) => {
-            find_name_in_group(group, target, absolute_target, &pattern, recursive, printer)
-        }
+        H5Object::Group(group) => find_name_in_group(group, target, &pattern, recursive, printer),
         H5Object::Dataset(_) => match_name_dataset(target, &pattern, printer),
         H5Object::Attribute(_) => Err(CommandError::Error("Is an attribute".to_string())),
     }
@@ -115,20 +114,19 @@ fn find_name(
 
 fn find_name_in_group(
     group: H5Group,
-    target: H5Path,
-    absolute_target: H5Path,
+    group_path: H5Path,
     pattern: &Regex,
     recursive: bool,
     printer: &Printer,
 ) -> CmdResult {
     let mut stdout = stdout();
     for child in group.load_children()?.into_iter() {
-        let path = child.path().relative_to(&absolute_target);
-        if let Some(mat) = pattern.find(path.as_raw()) {
+        let path = child.path();
+        if let Some(mat) = pattern.find(path.name()) {
             write_matched_path(
                 &mut stdout,
-                &target,
-                &path,
+                &group_path,
+                path,
                 mat,
                 child.location_type(),
                 printer,
@@ -138,8 +136,7 @@ fn find_name_in_group(
             let child_path = child_group.path().clone();
             find_name_in_group(
                 child_group,
-                child_path,
-                absolute_target.join(&path),
+                group_path.join(&child_path),
                 pattern,
                 recursive,
                 printer,
@@ -168,15 +165,19 @@ fn match_name_dataset(target: H5Path, pattern: &Regex, printer: &Printer) -> Cmd
 
 fn write_matched_path<'q, Q: QueueableCommand>(
     queue: &'q mut Q,
-    target: &H5Path,
+    parent: &H5Path,
     path: &H5Path,
     mat: Match,
     location_type: hdf5::LocationType,
     printer: &Printer,
 ) -> std::io::Result<&'q mut Q> {
-    let base_style = if !target.is_current() {
-        queue.queue(&printer.style().group)?.queue(Print(target))?;
-        if !target.as_raw().ends_with('/') {
+    let base_style = if !parent.is_current() {
+        let parent = parent
+            .as_raw()
+            .strip_prefix("./")
+            .unwrap_or_else(|| parent.as_raw());
+        queue.queue(&printer.style().group)?.queue(Print(parent))?;
+        if !parent.ends_with('/') {
             queue.queue(Print('/'))?;
         }
 
