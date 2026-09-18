@@ -208,25 +208,35 @@ fn cat() {
 }
 
 #[test]
-fn fd_location() {
+fn find_location() {
     let mut h5sh = launch_h5sh();
 
-    send_command_no_output(&mut h5sh, "fd utf8");
+    send_command_no_output(&mut h5sh, "find utf8");
     let output = read_all_lines(&mut h5sh);
     let expected_lines = vec!["base/label-utf8"];
     assert_output_lines(output, expected_lines);
 
-    send_command_no_output(&mut h5sh, "fd empty");
+    send_command_no_output(&mut h5sh, "find empty");
     let output = read_all_lines(&mut h5sh);
     let expected_lines = vec!["base/g_empty"];
+    assert_output_lines(output, expected_lines);
+
+    send_command_no_output(&mut h5sh, "find all_.*a");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec!["base/arrays/all_normal_f32", "base/booleans/all_false"];
+    assert_output_lines(output, expected_lines);
+
+    send_command_no_output(&mut h5sh, "find all_.*a base");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec!["arrays/all_normal_f32", "booleans/all_false"];
     assert_output_lines(output, expected_lines);
 }
 
 #[test]
-fn fd_attr() {
+fn find_attr() {
     let mut h5sh = launch_h5sh();
 
-    send_command_no_output(&mut h5sh, "fd @testo");
+    send_command_no_output(&mut h5sh, "find @testo");
     let output = read_all_lines(&mut h5sh);
     let expected_lines = vec![
         "base/label-utf8",
@@ -237,7 +247,7 @@ fn fd_attr() {
     ];
     assert_output_lines(output, expected_lines);
 
-    send_command_no_output(&mut h5sh, "fd @test=other");
+    send_command_no_output(&mut h5sh, "find @test=other");
     let output = read_all_lines(&mut h5sh);
     let expected_lines = vec!["base/label-utf8", "  testo2 = another attribute"];
     assert_output_lines(output, expected_lines);
