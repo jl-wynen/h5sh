@@ -44,10 +44,10 @@ jobs:
 
       - name: Build [Cargo]
         if: "!contains(matrix.os, 'ubuntu')"
-        run: cargo build --verbose --release --locked --target "${{ matrix.target }}"
+        run: cargo build --verbose --release --target "${{ matrix.target }}"
       - name: Build [Cross]
         if: "contains(matrix.os, 'ubuntu')"
-        run: cross build --verbose --release --locked --target "${{ matrix.target }}"
+        run: cross build --verbose --release --target "${{ matrix.target }}"
       - name: Prepare artifacts [Windows]
         if: "contains(matrix.target, 'windows')"
         run: |
