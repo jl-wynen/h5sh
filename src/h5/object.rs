@@ -232,4 +232,11 @@ impl<T> PartialData<T> {
             PartialData::FirstN(array) => array,
         }
     }
+
+    pub fn map<U>(&self, f: impl FnMut(&T) -> U) -> PartialData<U> {
+        match self {
+            PartialData::Full(a) => PartialData::Full(a.map(f)),
+            PartialData::FirstN(a) => PartialData::FirstN(a.map(f)),
+        }
+    }
 }

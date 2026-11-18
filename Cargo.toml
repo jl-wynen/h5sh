@@ -30,6 +30,8 @@ smallvec = { version = "2.0.0-alpha.12", features = ["std"] }
 uutils_term_grid = "0.8"
 
 [dev-dependencies]
+# Must match the version used by hdf5-metno above
+hdf5-metno-sys = "0.12"
 pretty_assertions = "1.4.1"
 
 [target.'cfg(not(target_os = "windows"))'.dev-dependencies]

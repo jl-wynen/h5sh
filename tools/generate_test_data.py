@@ -49,10 +49,21 @@ def main() -> None:
         )
 
         arrays = base.create_group("arrays")
-        arrays.create_dataset("all_normal_f32", data=np.array([10.5, -0.2, 4.44], dtype="float32"))
+        f32_array = arrays.create_dataset("all_normal_f32", data=np.array([10.5, -0.2, 4.44], dtype="float32"))
         arrays.create_dataset("some_nan_inf", data=np.array([[1.0, np.nan], [np.inf, -np.inf], [2.1, 4.1]]))
         arrays.create_dataset("all_inf", data=np.array([-np.inf, np.inf, -np.inf]))
         arrays.create_dataset("ints", data=np.array([-6, -28, 8, 0]))
+
+        # TODO attr
+        base.create_dataset("single_ref", data=np.array(f32_array.ref, dtype=h5.ref_dtype))
+        base.create_dataset("multi_ref", data=np.array([utf8.ref, booleans.ref, f32_array.ref], dtype=h5.ref_dtype))
+
+        bad_refs_group = f.create_group("bad_refs")
+        ds = bad_refs_group.create_dataset("ds", shape=(1,), dtype="int32")
+        dangling = bad_refs_group.create_dataset("dangling", data=np.array(ds.ref, dtype=h5.ref_dtype))
+        del bad_refs_group["ds"]  # make ref dangling
+        null = bad_refs_group.create_dataset("null", shape=(2,), dtype=h5.ref_dtype)
+        null[1] = f32_array.ref
 
 
 if __name__ == "__main__":

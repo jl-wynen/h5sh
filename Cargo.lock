@@ -749,7 +749,7 @@ dependencies = [
 
 [[package]]
 name = "h5sh"
-version = "1.0.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -758,6 +758,7 @@ dependencies = [
  "dirs",
  "escargot",
  "hdf5-metno",
+ "hdf5-metno-sys",
  "indexmap",
  "log",
  "lscolors",

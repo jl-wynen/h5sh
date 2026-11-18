@@ -143,7 +143,10 @@ fn ls_from_root() {
     let output = read_all_lines(&mut h5sh);
     assert_eq!(
         output,
-        vec!["arrays/  booleans/  g_empty/  label-utf8  long_array  short  sub-group/"]
+        vec![
+            "arrays/    g_empty/    long_array  short       sub-group/",
+            "booleans/  label-utf8  multi_ref   single_ref",
+        ]
     );
 }
 
@@ -154,13 +157,33 @@ fn ls_l() {
     let output = read_all_lines(&mut h5sh);
 
     let expected_lines = [
-        "            grp      arrays/",
-        "            grp      booleans/",
-        "            grp      g_empty/",
-        "()     16B  utf-8    label-utf8 This is a UTF-8 dataset",
-        "(1030)  8Ki f64      long_array [0, 1, 2, 3, 4, 5, 6, 7 ...",
-        "()      6B  ascii(6) short      shorty",
-        "            grp      sub-group/",
+        "            grp          arrays/",
+        "            grp          booleans/",
+        "            grp          g_empty/",
+        "()     16B  utf-8        label-utf8 This is a UTF-8 dataset",
+        "(1030)  8Ki f64          long_array [0, 1, 2, 3, 4, 5, 6, 7 ...",
+        "(3)    24B  ref (object) multi_ref  [/base/label-utf8, /base/booleans, /b ...",
+        "()      6B  ascii(6)     short      shorty",
+        "()      8B  ref (object) single_ref /base/arrays/all_normal_f32",
+        "            grp          sub-group/",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn ls_l_bad_refs() {
+    let mut h5sh = launch_h5sh();
+    send_command_no_output(&mut h5sh, "ls -l bad_refs");
+    let output = read_all_lines(&mut h5sh);
+
+    let expected_lines = [
+        "()   8B  ref (object) dangling <H5Rget_obj_type2(): can't retrieve object ...",
+        "(2) 16B  ref (object) null     [NULL, /base/arrays/all_normal_f32]",
     ];
     for (actual, expected) in output.iter().zip(expected_lines.iter()) {
         assert!(
@@ -371,6 +394,59 @@ fn inspect_dataset_boolean() {
 }
 
 #[test]
+fn inspect_dataset_ascii_fixed_len() {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "inspect base/short");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: ascii(1024)",
+        "Shape: []  Volume: 1",
+        "All ASCII: true",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn inspect_dataset_utf8_var_length() {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "inspect base/label-utf8");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = [
+        "Dataset      DType: utf-8",
+        "Shape: []  Volume: 1",
+        "All ASCII: true",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn inspect_dataset_reference() {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "inspect base/multi_ref");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = ["Dataset      DType: ref (object)", "Shape: [3]  Volume: 3"];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
 fn inspect_attr_int() {
     let mut h5sh = launch_h5sh();
 
@@ -428,7 +504,7 @@ fn inspect_group() {
     let output = read_all_lines(&mut h5sh);
     let expected_lines = [
         "Group/",
-        "Groups: 4  Datasets: 3",
+        "Groups: 4  Datasets: 5",
         "Named datatypes: 0  Type maps: 0",
     ];
     for (actual, expected) in output.iter().zip(expected_lines.iter()) {
@@ -444,20 +520,22 @@ fn batch_ls() {
     let output = launch_h5sh_in_batch_mode("ls");
     assert!(output.status.success());
     let output = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(output, "base/\n");
+    assert_eq!(output, "bad_refs/  base/\n");
 
     let output = launch_h5sh_in_batch_mode("ls -l base");
     assert!(output.status.success());
     let output = String::from_utf8_lossy(&output.stdout);
 
     let expected_lines = [
-        "            grp      arrays/",
-        "            grp      booleans/",
-        "            grp      g_empty/",
-        "()     16B  utf-8    label-utf8 This is a UTF-8 dataset",
-        "(1030)  8Ki f64      long_array [0, 1, 2, 3, 4, 5, 6, 7 ...",
-        "()      6B  ascii(6) short      shorty",
-        "            grp      sub-group/",
+        "            grp          arrays/",
+        "            grp          booleans/",
+        "            grp          g_empty/",
+        "()     16B  utf-8        label-utf8 This is a UTF-8 dataset",
+        "(1030)  8Ki f64          long_array [0, 1, 2, 3, 4, 5, 6, 7 ...",
+        "(3)    24B  ref (object) multi_ref  [/base/label-utf8, /base/booleans, /b ...",
+        "()      6B  ascii(6)     short      shorty",
+        "()      8B  ref (object) single_ref /base/arrays/all_normal_f32",
+        "            grp          sub-group/",
     ];
     for (actual, expected) in output.lines().zip(expected_lines.iter()) {
         assert!(
@@ -483,8 +561,10 @@ fn initial_commands() {
 
     send_command_no_output(&mut h5sh, "ls");
     let output = read_all_lines(&mut h5sh);
-    let expected_lines =
-        ["arrays/  booleans/  g_empty/  label-utf8  long_array  short  sub-group/"];
+    let expected_lines = vec![
+        "arrays/    g_empty/    long_array  short       sub-group/",
+        "booleans/  label-utf8  multi_ref   single_ref",
+    ];
     for (actual, expected) in output.iter().zip(expected_lines.iter()) {
         assert!(
             actual.starts_with(expected),

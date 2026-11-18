@@ -151,10 +151,7 @@ pub fn load_and_inspect_data<'alloc>(
         TypeDescriptor::Integer(int_size) => any_signed_int(container, int_size, printer, bump),
         TypeDescriptor::Unsigned(int_size) => any_unsigned_int(container, int_size, printer, bump),
         TypeDescriptor::Boolean => boolean(container, printer, bump),
-        descriptor => Err(CommandError::Error(std::format!(
-            "dtype not supported: {}",
-            printer.format_dtype(&descriptor, bump)
-        ))),
+        t => fallback(container, t, printer, bump),
     }
 }
 
@@ -269,6 +266,30 @@ fn any_unsigned_int<'alloc>(
         IntSize::U2 => number::<u16>(container, printer, bump),
         IntSize::U1 => number::<u8>(container, printer, bump),
     }
+}
+
+fn fallback<'alloc>(
+    container: &impl Deref<Target = hdf5::Container>,
+    descriptor: TypeDescriptor,
+    printer: &Printer,
+    bump: &'alloc Bump,
+) -> Result<BumpVec<'alloc, u8>, CommandError> {
+    let mut buffer = BumpVec::<u8>::new_in(bump);
+
+    write_item(
+        &mut buffer,
+        "DType",
+        printer.format_dtype(&descriptor, bump),
+        printer,
+    )?
+    .execute(Print('\n'))?;
+
+    let shape = container.shape();
+    let volume = shape.iter().fold(1, |acc, x| acc * x);
+    write_item_debug(&mut buffer, "Shape", shape, printer, bump)?.execute(Print("  "))?;
+    write_item(&mut buffer, "Volume", volume, printer)?;
+
+    Ok(buffer)
 }
 
 trait IsNonFinite {

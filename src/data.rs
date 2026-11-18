@@ -2,7 +2,10 @@ use crate::h5::{self, PartialData};
 use crate::output::Printer;
 use bumpalo::{Bump, collections::String as BumpString};
 use crossterm::{ExecutableCommand, style::Print};
-use hdf5::{H5Type, types::TypeDescriptor};
+use hdf5::{
+    H5Type,
+    types::{Reference, TypeDescriptor},
+};
 use std::fmt::Display;
 use std::ops::Deref;
 
@@ -37,6 +40,9 @@ pub fn load_and_format_data<'alloc>(
         ),
         TypeDescriptor::Boolean => {
             load_and_format::bool(container, max_elem, max_width, printer, bump)
+        }
+        TypeDescriptor::Reference(reference) => {
+            load_and_format::reference(reference, container, max_elem, max_width, printer, bump)
         }
         descriptor => Err(h5::H5Error::Other(format!(
             "dtype not supported: {}",
@@ -164,8 +170,30 @@ mod load_and_format {
         load_and_format::<bool>(container, max_elem, max_width, printer, bump)
     }
 
-    // Note that the max_width handling assumes that
-    // the formatted array contains no escape sequences.
+    pub(super) fn reference<'alloc>(
+        ref_type: Reference,
+        container: &impl Deref<Target = hdf5::Container>,
+        max_elem: Option<usize>,
+        max_width: Option<usize>,
+        printer: &Printer,
+        bump: &'alloc Bump,
+    ) -> h5::Result<BumpString<'alloc>> {
+        match ref_type {
+            // Modern reference (HDF5 >= 1.12, H5R_ref_t)
+            Reference::Std => load_and_format_ref::<hdf5::ObjectReference2>(
+                container, max_elem, max_width, printer, bump,
+            ),
+            // Legacy object reference (hobj_ref_t)
+            Reference::Object => load_and_format_ref::<hdf5::ObjectReference1>(
+                container, max_elem, max_width, printer, bump,
+            ),
+            // dataset-region reference, not available in hdf5-metno
+            Reference::Region => Err(H5Error::Other(
+                "legacy dataset region reference not supported".to_string(),
+            )),
+        }
+    }
+
     fn load_and_format<'alloc, T: H5Type + Display>(
         container: &impl Deref<Target = hdf5::Container>,
         max_elem: Option<usize>,
@@ -173,16 +201,79 @@ mod load_and_format {
         printer: &Printer,
         bump: &'alloc Bump,
     ) -> h5::Result<BumpString<'alloc>> {
-        use std::fmt::Write;
+        let content = read::<T>(container, max_elem)?;
+        Ok(format_content(&content, max_width, printer, bump))
+    }
 
-        let content = if let Some(max_elem) = max_elem {
+    fn load_and_format_ref<'alloc, R: hdf5::ObjectReference>(
+        container: &impl Deref<Target = hdf5::Container>,
+        max_elem: Option<usize>,
+        max_width: Option<usize>,
+        printer: &Printer,
+        bump: &'alloc Bump,
+    ) -> h5::Result<BumpString<'alloc>> {
+        let content = read::<R>(container, max_elem)?;
+        let location: &hdf5::Location = container;
+        let names = content.map(|r| describe_reference(r, location));
+        Ok(format_content(&names, max_width, printer, bump))
+    }
+
+    fn read<T: H5Type>(
+        container: &impl Deref<Target = hdf5::Container>,
+        max_elem: Option<usize>,
+    ) -> h5::Result<PartialData<T>> {
+        if let Some(max_elem) = max_elem {
             read_first_n::<T>(container, max_elem)
         } else {
             Ok(container.read::<T, IxDyn>().map(PartialData::Full)?)
-        }?;
+        }
+    }
+
+    fn describe_reference<R: hdf5::ObjectReference + H5Type>(
+        r: &R,
+        location: &hdf5::Location,
+    ) -> String {
+        let name = match r.dereference(location) {
+            Ok(hdf5::ReferencedObject::Group(g)) => g.name(),
+            Ok(hdf5::ReferencedObject::Dataset(d)) => d.name(),
+            // Datatype derefs to Object, not Location, so there is no `.name()`
+            Ok(hdf5::ReferencedObject::Datatype(d)) => d.to_string(),
+            // Null / dangling references fail to dereference
+            Err(error) => {
+                if ref_is_null(r) {
+                    "NULL".to_string()
+                } else {
+                    format!("<{error}>")
+                }
+            }
+        };
+        if name.is_empty() {
+            "<anonymous>".to_string()
+        } else {
+            name
+        }
+    }
+
+    fn ref_is_null<R: hdf5::ObjectReference + H5Type>(r: &R) -> bool {
+        // SAFETY: R is a plain-old-data H5Type (hobj_ref_t / H5R_ref_t) with no padding
+        // See test references_are_compatible_with_c_layout
+        let bytes =
+            unsafe { std::slice::from_raw_parts((r as *const R).cast::<u8>(), size_of::<R>()) };
+        // Check for 0xff to handle legacy refs
+        bytes.iter().all(|&b| b == 0) || bytes.iter().all(|&b| b == 0xff)
+    }
+
+    // Note that the max_width handling assumes that
+    // the formatted array contains no escape sequences.
+    fn format_content<'alloc, T: Display>(
+        content: &PartialData<T>,
+        max_width: Option<usize>,
+        printer: &Printer,
+        bump: &'alloc Bump,
+    ) -> BumpString<'alloc> {
+        use std::fmt::Write;
 
         let mut out = BumpString::new_in(bump);
-
         if write!(&mut out, "{}", content.array()).is_err() {
             let _ = write!(&mut out, "<failed write>");
         };
@@ -196,18 +287,14 @@ mod load_and_format {
         } else {
             out.truncate(out.len().saturating_sub(1)); // remove final ']'
             if let Some(max_width) = max_width {
-                let padded_width = out.len() + 4; // padded with " ..."
-                if max_width >= padded_width {
-                    out.push_str(&trailing_ellipses(printer));
-                } else {
+                let padded_width = out.len() + 4;
+                if max_width < padded_width {
                     out.truncate(max_width.saturating_sub(4));
-                    out.push_str(&trailing_ellipses(printer));
                 }
-            } else {
-                out.push_str(&trailing_ellipses(printer));
             }
+            out.push_str(&trailing_ellipses(printer));
         }
-        Ok(out)
+        out
     }
 
     fn trailing_ellipses(printer: &Printer) -> String {
@@ -237,5 +324,19 @@ mod load_and_format {
                 "Reading first n elements is only supported for scalar and 1d data.".to_string(),
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn references_are_compatible_with_c_layout() {
+        use hdf5::{ObjectReference1, ObjectReference2};
+        use hdf5_metno_sys::h5r::{H5R_ref_t, hobj_ref_t};
+
+        assert_eq!(size_of::<ObjectReference1>(), size_of::<hobj_ref_t>());
+        assert_eq!(align_of::<ObjectReference1>(), align_of::<hobj_ref_t>());
+        assert_eq!(size_of::<ObjectReference2>(), size_of::<H5R_ref_t>());
+        assert_eq!(align_of::<ObjectReference2>(), align_of::<H5R_ref_t>());
     }
 }
