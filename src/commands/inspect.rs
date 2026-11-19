@@ -285,7 +285,7 @@ fn fallback<'alloc>(
     .execute(Print('\n'))?;
 
     let shape = container.shape();
-    let volume = shape.iter().fold(1, |acc, x| acc * x);
+    let volume = shape.iter().product::<usize>();
     write_item_debug(&mut buffer, "Shape", shape, printer, bump)?.execute(Print("  "))?;
     write_item(&mut buffer, "Volume", volume, printer)?;
 
