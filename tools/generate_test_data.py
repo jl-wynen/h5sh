@@ -54,16 +54,30 @@ def main() -> None:
         arrays.create_dataset("all_inf", data=np.array([-np.inf, np.inf, -np.inf]))
         arrays.create_dataset("ints", data=np.array([-6, -28, 8, 0]))
 
-        # TODO attr
         base.create_dataset("single_ref", data=np.array(f32_array.ref, dtype=h5.ref_dtype))
         base.create_dataset("multi_ref", data=np.array([utf8.ref, booleans.ref, f32_array.ref], dtype=h5.ref_dtype))
 
         bad_refs_group = f.create_group("bad_refs")
         ds = bad_refs_group.create_dataset("ds", shape=(1,), dtype="int32")
-        dangling = bad_refs_group.create_dataset("dangling", data=np.array(ds.ref, dtype=h5.ref_dtype))
+        bad_refs_group.create_dataset("dangling", data=np.array(ds.ref, dtype=h5.ref_dtype))
         del bad_refs_group["ds"]  # make ref dangling
         null = bad_refs_group.create_dataset("null", shape=(2,), dtype=h5.ref_dtype)
         null[1] = f32_array.ref
+
+        dim_scales = f.create_group("dim_scales")
+        x = dim_scales.create_dataset("x", data=np.arange(3))
+        x.make_scale("xx")
+        x2 = dim_scales.create_dataset("x2", data=2*np.arange(3))
+        x2.make_scale()
+        y = dim_scales.create_dataset("y", data=-np.arange(2))
+        y.make_scale("Y")
+        d1 = dim_scales.create_dataset("d1", data=np.full((3, 2), 10))
+        d1.dims[1].label = "ly"
+        d1.dims[0].attach_scale(x)
+        d1.dims[1].attach_scale(y)
+        d1.dims[0].attach_scale(x2)
+        d2 = dim_scales.create_dataset("d2", data=np.full(2, -5))
+        d2.dims[0].attach_scale(x)
 
 
 if __name__ == "__main__":

@@ -233,7 +233,7 @@ impl<T> PartialData<T> {
         }
     }
 
-    pub fn map<U>(&self, f: impl FnMut(&T) -> U) -> PartialData<U> {
+    pub fn map<'a, U>(&'a self, f: impl FnMut(&'a T) -> U) -> PartialData<U> {
         match self {
             PartialData::Full(a) => PartialData::Full(a.map(f)),
             PartialData::FirstN(a) => PartialData::FirstN(a.map(f)),

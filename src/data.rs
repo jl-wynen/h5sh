@@ -16,206 +16,186 @@ pub fn load_and_format_data<'alloc>(
     printer: &Printer,
     bump: &'alloc Bump,
 ) -> h5::Result<BumpString<'alloc>> {
-    match container.dtype()?.to_descriptor()? {
-        TypeDescriptor::VarLenUnicode => {
-            load_and_format::var_len_unicode(container, max_elem, max_width, printer, bump)
-        }
-        TypeDescriptor::VarLenAscii => {
-            load_and_format::var_len_ascii(container, max_elem, max_width, printer, bump)
-        }
-        TypeDescriptor::FixedUnicode(n) => {
-            load_and_format::fixed_len_unicode(container, n, max_elem, max_width, printer, bump)
-        }
-        TypeDescriptor::FixedAscii(n) => {
-            load_and_format::fixed_len_ascii(container, n, max_elem, max_width, printer, bump)
-        }
-        TypeDescriptor::Float(float_size) => {
-            load_and_format::float(container, float_size, max_elem, max_width, printer, bump)
-        }
-        TypeDescriptor::Integer(int_size) => {
-            load_and_format::signed_integer(container, int_size, max_elem, max_width, printer, bump)
-        }
-        TypeDescriptor::Unsigned(int_size) => load_and_format::unsigned_integer(
-            container, int_size, max_elem, max_width, printer, bump,
-        ),
-        TypeDescriptor::Boolean => {
-            load_and_format::bool(container, max_elem, max_width, printer, bump)
-        }
-        TypeDescriptor::Reference(reference) => {
-            load_and_format::reference(reference, container, max_elem, max_width, printer, bump)
-        }
-        descriptor => Err(h5::H5Error::Other(format!(
+    let descriptor = container.dtype()?.to_descriptor()?;
+    let visitor = load_and_format::LoadAndFormat {
+        container,
+        max_elem,
+        max_width,
+        printer,
+        bump,
+    };
+    load_and_format::dispatch(&descriptor, visitor).unwrap_or_else(|| {
+        Err(h5::H5Error::Other(format!(
             "dtype not supported: {}",
             printer.format_dtype(&descriptor, bump)
-        ))),
-    }
+        )))
+    })
 }
 
 mod load_and_format {
     use super::*;
     use crate::h5::H5Error;
+    use std::fmt;
 
-    use hdf5::types::{FixedAscii, FixedUnicode, FloatSize, IntSize, VarLenAscii, VarLenUnicode};
+    use hdf5::types::{
+        FixedAscii, FixedUnicode, FloatSize, IntSize, VarLenArray, VarLenAscii, VarLenUnicode,
+    };
     use ndarray::{IxDyn, s};
 
-    pub(super) fn var_len_unicode<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        load_and_format::<VarLenUnicode>(container, max_elem, max_width, printer, bump)
+    /// Maximum supported length of fixed-length strings.
+    const MAX_N: usize = 1024;
+
+    /// An operation that can be performed with a concrete element type.
+    pub(super) trait Visitor: Sized {
+        type Output;
+        fn visit<T: Element>(self) -> Self::Output;
     }
 
-    pub(super) fn var_len_ascii<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        load_and_format::<VarLenAscii>(container, max_elem, max_width, printer, bump)
-    }
+    /// An element type that can be read and rendered.
+    pub(super) trait Element: H5Type {
+        fn fmt_elem(&self, loc: &hdf5::Location, f: &mut fmt::Formatter<'_>) -> fmt::Result;
 
-    pub(super) fn fixed_len_unicode<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        n: usize,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        const MAX_N: usize = 1024;
-        if n > MAX_N {
-            return Err(H5Error::Other(format!(
-                "Can only read fixed-length strings of up to {MAX_N} bytes"
-            )));
+        /// Visit `VarLenArray<Self>`.
+        /// Returns `None` if `Self` can't be a var-len array element (requires `Copy`).
+        fn visit_vlen_array<V: Visitor>(_visitor: V) -> Option<V::Output> {
+            None
         }
-        load_and_format::<FixedUnicode<MAX_N>>(container, max_elem, max_width, printer, bump)
     }
 
-    pub(super) fn fixed_len_ascii<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        n: usize,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        const MAX_N: usize = 1024;
-        if n > MAX_N {
-            return Err(H5Error::Other(format!(
-                "Can only read fixed-length strings of up to {MAX_N} bytes"
-            )));
+    macro_rules! display_element_copy {
+        ($($t:ty),* $(,)?) => {$(
+            impl Element for $t {
+                fn fmt_elem(&self, _: &hdf5::Location, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    fmt::Display::fmt(self, f)
+                }
+                fn visit_vlen_array<V: Visitor>(visitor: V) -> Option<V::Output> {
+                    Some(visitor.visit::<VarLenArray<Self>>())
+                }
+            }
+        )*};
+    }
+
+    macro_rules! display_element_non_copy {
+        ( $($t:ty),* $(,)?) => {$(
+            impl Element for $t {
+                fn fmt_elem(&self, _: &hdf5::Location, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    fmt::Display::fmt(self, f)
+                }
+            }
+        )*};
+    }
+
+    display_element_copy!(i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool,
+                     FixedAscii<MAX_N>, FixedUnicode<MAX_N>);
+    display_element_non_copy!(VarLenAscii, VarLenUnicode);
+
+    impl Element for hdf5::ObjectReference1 {
+        fn fmt_elem(&self, loc: &hdf5::Location, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str(&describe_reference(self, loc))
         }
-        load_and_format::<FixedAscii<MAX_N>>(container, max_elem, max_width, printer, bump)
+        fn visit_vlen_array<V: Visitor>(visitor: V) -> Option<V::Output> {
+            Some(visitor.visit::<VarLenArray<Self>>())
+        }
     }
 
-    pub(super) fn float<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        float_size: FloatSize,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        match float_size {
-            FloatSize::U8 => load_and_format::<f64>(container, max_elem, max_width, printer, bump),
-            FloatSize::U4 => load_and_format::<f32>(container, max_elem, max_width, printer, bump),
+    impl Element for hdf5::ObjectReference2 {
+        fn fmt_elem(&self, loc: &hdf5::Location, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str(&describe_reference(self, loc))
+        }
+    }
+
+    // `VarLenArray` is not `Copy`, so the default `visit_vlen` rejects nested var-len arrays.
+    impl<T: Element + Copy> Element for VarLenArray<T> {
+        fn fmt_elem(&self, loc: &hdf5::Location, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("[")?;
+            for (i, x) in self.iter().enumerate() {
+                if i > 0 {
+                    f.write_str(", ")?;
+                }
+                x.fmt_elem(loc, f)?;
+            }
+            f.write_str("]")
+        }
+    }
+
+    /// Call `visitor` with the Rust type corresponding to `desc`.
+    /// Returns `None` if the type is not supported.
+    pub(super) fn dispatch<V: Visitor>(desc: &TypeDescriptor, visitor: V) -> Option<V::Output> {
+        match desc {
+            TypeDescriptor::VarLenArray(inner) => {
+                dispatch_scalar(inner, VarLen(visitor)).flatten()
+            }
+            _ => dispatch_scalar(desc, visitor),
+        }
+    }
+
+    fn dispatch_scalar<V: Visitor>(desc: &TypeDescriptor, v: V) -> Option<V::Output> {
+        use TypeDescriptor as TD;
+        Some(match desc {
+            TD::Integer(IntSize::U1) => v.visit::<i8>(),
+            TD::Integer(IntSize::U2) => v.visit::<i16>(),
+            TD::Integer(IntSize::U4) => v.visit::<i32>(),
+            TD::Integer(IntSize::U8) => v.visit::<i64>(),
+            TD::Unsigned(IntSize::U1) => v.visit::<u8>(),
+            TD::Unsigned(IntSize::U2) => v.visit::<u16>(),
+            TD::Unsigned(IntSize::U4) => v.visit::<u32>(),
+            TD::Unsigned(IntSize::U8) => v.visit::<u64>(),
+            TD::Float(FloatSize::U8) => v.visit::<f64>(),
             // f16 is unstable, so approximate using f32
-            FloatSize::U2 => load_and_format::<f32>(container, max_elem, max_width, printer, bump),
-        }
-    }
-
-    pub(super) fn signed_integer<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        int_size: IntSize,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        match int_size {
-            IntSize::U8 => load_and_format::<i64>(container, max_elem, max_width, printer, bump),
-            IntSize::U4 => load_and_format::<i32>(container, max_elem, max_width, printer, bump),
-            IntSize::U2 => load_and_format::<i16>(container, max_elem, max_width, printer, bump),
-            IntSize::U1 => load_and_format::<i8>(container, max_elem, max_width, printer, bump),
-        }
-    }
-
-    pub(super) fn unsigned_integer<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        int_size: IntSize,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        match int_size {
-            IntSize::U8 => load_and_format::<u64>(container, max_elem, max_width, printer, bump),
-            IntSize::U4 => load_and_format::<u32>(container, max_elem, max_width, printer, bump),
-            IntSize::U2 => load_and_format::<u16>(container, max_elem, max_width, printer, bump),
-            IntSize::U1 => load_and_format::<u8>(container, max_elem, max_width, printer, bump),
-        }
-    }
-
-    pub(super) fn bool<'alloc>(
-        container: &impl Deref<Target = hdf5::Container>,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        load_and_format::<bool>(container, max_elem, max_width, printer, bump)
-    }
-
-    pub(super) fn reference<'alloc>(
-        ref_type: Reference,
-        container: &impl Deref<Target = hdf5::Container>,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        match ref_type {
-            // Modern reference (HDF5 >= 1.12, H5R_ref_t)
-            Reference::Std => load_and_format_ref::<hdf5::ObjectReference2>(
-                container, max_elem, max_width, printer, bump,
-            ),
+            TD::Float(FloatSize::U4 | FloatSize::U2) => v.visit::<f32>(),
+            TD::Boolean => v.visit::<bool>(),
+            TD::FixedAscii(n) if *n <= MAX_N => v.visit::<FixedAscii<MAX_N>>(),
+            TD::FixedUnicode(n) if *n <= MAX_N => v.visit::<FixedUnicode<MAX_N>>(),
+            TD::VarLenAscii => v.visit::<VarLenAscii>(),
+            TD::VarLenUnicode => v.visit::<VarLenUnicode>(),
             // Legacy object reference (hobj_ref_t)
-            Reference::Object => load_and_format_ref::<hdf5::ObjectReference1>(
-                container, max_elem, max_width, printer, bump,
-            ),
-            // dataset-region reference, not available in hdf5-metno
-            Reference::Region => Err(H5Error::Other(
-                "legacy dataset region reference not supported".to_string(),
-            )),
+            TD::Reference(Reference::Object) => v.visit::<hdf5::ObjectReference1>(),
+            // Modern reference (HDF5 >= 1.12, H5R_ref_t)
+            TD::Reference(Reference::Std) => v.visit::<hdf5::ObjectReference2>(),
+            // Legacy dataset-region references are not available in hdf5-metno
+            _ => return None,
+        })
+    }
+
+    /// Wraps a visitor to visit `VarLenArray<T>` instead of `T`.
+    struct VarLen<V>(V);
+
+    impl<V: Visitor> Visitor for VarLen<V> {
+        type Output = Option<V::Output>;
+        fn visit<T: Element>(self) -> Self::Output {
+            T::visit_vlen_array(self.0)
         }
     }
 
-    fn load_and_format<'alloc, T: H5Type + Display>(
-        container: &impl Deref<Target = hdf5::Container>,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        let content = read::<T>(container, max_elem)?;
-        Ok(format_content(&content, max_width, printer, bump))
+    pub(super) struct LoadAndFormat<'a, 'alloc, C> {
+        pub container: &'a C,
+        pub max_elem: Option<usize>,
+        pub max_width: Option<usize>,
+        pub printer: &'a Printer,
+        pub bump: &'alloc Bump,
     }
 
-    fn load_and_format_ref<'alloc, R: hdf5::ObjectReference>(
-        container: &impl Deref<Target = hdf5::Container>,
-        max_elem: Option<usize>,
-        max_width: Option<usize>,
-        printer: &Printer,
-        bump: &'alloc Bump,
-    ) -> h5::Result<BumpString<'alloc>> {
-        let content = read::<R>(container, max_elem)?;
-        let location: &hdf5::Location = container;
-        let names = content.map(|r| describe_reference(r, location));
-        Ok(format_content(&names, max_width, printer, bump))
+    impl<'alloc, C: Deref<Target = hdf5::Container>> Visitor for LoadAndFormat<'_, 'alloc, C> {
+        type Output = h5::Result<BumpString<'alloc>>;
+
+        fn visit<T: Element>(self) -> Self::Output {
+            let content = read::<T>(self.container, self.max_elem)?;
+            let loc: &hdf5::Location = self.container;
+            let shown = content.map(|value| Shown { value, loc });
+            Ok(format_content(&shown, self.max_width, self.printer, self.bump))
+        }
+    }
+
+    /// Displays an element using its `Element` implementation.
+    struct Shown<'a, T> {
+        value: &'a T,
+        loc: &'a hdf5::Location,
+    }
+
+    impl<T: Element> Display for Shown<'_, T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.value.fmt_elem(self.loc, f)
+        }
     }
 
     fn read<T: H5Type>(

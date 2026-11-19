@@ -205,10 +205,10 @@ impl Printer {
             TypeDescriptor::Compound(tp) => {
                 write!(&mut out, "compound ({})", tp.fields.len())
             }
-            TypeDescriptor::FixedArray(tp, n) => write!(&mut out, "[{tp}; {n}]"),
+            TypeDescriptor::FixedArray(tp, n) => write!(&mut out, "[{}; {n}]", self.format_dtype(tp, bump)),
             TypeDescriptor::FixedAscii(n) => write!(&mut out, "ascii({n})"),
             TypeDescriptor::FixedUnicode(n) => write!(&mut out, "utf-8({n})"),
-            TypeDescriptor::VarLenArray(tp) => write!(&mut out, "[{tp}]"),
+            TypeDescriptor::VarLenArray(tp) => write!(&mut out, "[{}]", self.format_dtype(tp, bump)),
             TypeDescriptor::VarLenAscii => write!(&mut out, "ascii"),
             TypeDescriptor::VarLenUnicode => write!(&mut out, "utf-8"),
             TypeDescriptor::Reference(Reference::Object) => write!(&mut out, "ref (object)"),

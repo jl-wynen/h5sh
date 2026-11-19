@@ -194,6 +194,27 @@ fn ls_l_bad_refs() {
 }
 
 #[test]
+fn ls_l_dim_scales() {
+    let mut h5sh = launch_h5sh();
+    send_command_no_output(&mut h5sh, "ls -l dim_scales");
+    let output = read_all_lines(&mut h5sh);
+
+    let expected_lines = [
+        "(3, 2) 48B  i64 d1 [...]",
+        "(2)    16B  i64 d2 [-5, -5]",
+        "(3)    24B  i64 x  [0, 1, 2]",
+        "(3)    24B  i64 x2 [0, 2, 4]",
+        "(2)    16B  i64 y  [0, -1]",
+    ];
+    for (actual, expected) in output.iter().zip(expected_lines.iter()) {
+        assert!(
+            actual.starts_with(expected),
+            "Expected '{actual}' to  start with '{expected}'"
+        );
+    }
+}
+
+#[test]
 fn ls_empty_group() {
     let mut h5sh = launch_h5sh();
     send_command_no_output(&mut h5sh, "cd base/g_empty");
@@ -211,6 +232,46 @@ fn attr() {
         "(4) 32B  i64   array@ [1, 2, 5, 6]",
         "()  16B  ascii ascii@ English only",
         "()  16B  utf-8 class@ TestGroup",
+    ];
+    assert_output_lines(output, expected_lines);
+}
+
+#[test]
+fn attr_dim_scales() {
+    let mut h5sh = launch_h5sh();
+
+    send_command_no_output(&mut h5sh, "a dim_scales/d1");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec![
+        "(2) 32B  ascii          DIMENSION_LABELS@ [, ly]",
+        "(2) 32B  [ref (object)] DIMENSION_LIST@   [[/dim_scales/x, /dim_scales/x2] ...",
+    ];
+    assert_output_lines(output, expected_lines);
+
+    send_command_no_output(&mut h5sh, "a dim_scales/x");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec![
+        "()  16B  ascii(16)    CLASS@          DIMENSION_SCALE",
+        "()   3B  ascii(3)     NAME@           xx",
+        "(2) 32B  compound (2) REFERENCE_LIST@ HDF5 error: 'dtype not supported: compound (2)'",
+    ];
+    assert_output_lines(output, expected_lines);
+
+    send_command_no_output(&mut h5sh, "a dim_scales/x2");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec![
+        "()  16B  ascii(16)    CLASS@          DIMENSION_SCALE",
+        "()   1B  ascii(1)     NAME@           ",
+        "(1) 16B  compound (2) REFERENCE_LIST@ HDF5 error: 'dtype not supported: compound (2)'",
+    ];
+    assert_output_lines(output, expected_lines);
+
+    send_command_no_output(&mut h5sh, "a dim_scales/y");
+    let output = read_all_lines(&mut h5sh);
+    let expected_lines = vec![
+        "()  16B  ascii(16)    CLASS@          DIMENSION_SCALE",
+        "()   2B  ascii(2)     NAME@           Y",
+        "(1) 16B  compound (2) REFERENCE_LIST@ HDF5 error: 'dtype not supported: compound (2)'",
     ];
     assert_output_lines(output, expected_lines);
 }
@@ -520,7 +581,7 @@ fn batch_ls() {
     let output = launch_h5sh_in_batch_mode("ls");
     assert!(output.status.success());
     let output = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(output, "bad_refs/  base/\n");
+    assert_eq!(output, "bad_refs/  base/  dim_scales/\n");
 
     let output = launch_h5sh_in_batch_mode("ls -l base");
     assert!(output.status.success());
